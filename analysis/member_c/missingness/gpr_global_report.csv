@@ -1,0 +1,4 @@
+feature,pct_missing,informative_missingness
+gpr_global,0.0,False
+gpr_threats,0.0,False
+gpr_acts,0.0,False

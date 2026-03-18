@@ -1,0 +1,16 @@
+# Claude
+claude.md
+.claude/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# OS
+.DS_Store
+
+# Credentials
+*.json
+!package.json

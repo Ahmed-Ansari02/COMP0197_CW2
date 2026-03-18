@@ -1,0 +1,11 @@
+feature,pct_missing,informative_missingness
+tone_mean,0.0,False
+tone_min,0.0,False
+tone_max,0.0,False
+tone_std,1.3618438348961528,False
+event_count,0.0,False
+total_articles,0.0,False
+hostile_event_count,0.0,False
+cooperative_event_count,0.0,False
+goldstein_mean,0.0,False
+goldstein_min,0.0,False

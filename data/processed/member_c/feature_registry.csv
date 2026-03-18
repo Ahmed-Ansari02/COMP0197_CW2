@@ -1,0 +1,51 @@
+feature_name,source,original_resolution,aggregation_method,lag_applied,transform,pct_missing,missingness_informative,distribution_type,correlated_with,known_issues,status
+gpr_global,GPR,monthly,none (already monthly),t-1,log1p,0.0,False,heavy-tailed,,,keep
+gpr_threats,GPR,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,,redundant (r>0.9 with ?),drop
+gpr_acts,GPR,monthly,none (already monthly),t-1,log1p,0.0,False,heavy-tailed,,,keep
+gpr_country,GPR,monthly,none (already monthly),t-1,log1p,0.0,False,heavy-tailed,,,keep
+tone_mean,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,normal-ish,,,keep
+tone_min,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,normal-ish,,,keep
+tone_max,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,normal-ish,,,keep
+tone_std,GDELT,monthly,none (already monthly),t-1,log1p,0.0,False,normal-ish,,,keep
+event_count,GDELT,monthly,none (already monthly),t-1,log1p,0.0,False,heavy-tailed,total_articles(0.99); hostile_event_count(0.97); cooperative_event_count(0.99),,keep
+total_articles,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,event_count(0.99); hostile_event_count(0.96); cooperative_event_count(0.98),redundant (r>0.9 with event_count),drop
+hostile_event_count,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,event_count(0.97); total_articles(0.96); cooperative_event_count(0.95),redundant (r>0.9 with event_count),drop
+cooperative_event_count,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,event_count(0.99); total_articles(0.98); hostile_event_count(0.95),redundant (r>0.9 with event_count),drop
+goldstein_mean,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+goldstein_min,GDELT,monthly,none (already monthly),t-1,raw,0.0,False,heavy-tailed,,redundant (r>0.9 with ?),drop
+vix_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,vix_close(0.94),,keep
+vix_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+vix_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,vix_mean(0.94),redundant (r>0.9 with vix_mean),drop
+vix_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+brent_oil_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,brent_oil_close(0.99),redundant (r>0.9 with brent_oil_close),drop
+brent_oil_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,redundant (r>0.9 with ?),drop
+brent_oil_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,brent_oil_mean(0.99),redundant (r>0.9 with brent_oil_mean),drop
+brent_oil_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,redundant (r>0.9 with ?),drop
+wti_oil_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,wti_oil_close(0.99),,keep
+wti_oil_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+wti_oil_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,wti_oil_mean(0.99),redundant (r>0.9 with wti_oil_mean),drop
+wti_oil_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+gold_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,gold_close(1.00),,keep
+gold_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+gold_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,gold_mean(1.00),redundant (r>0.9 with gold_mean),drop
+gold_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+dxy_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,dxy_close(0.99),,keep
+dxy_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+dxy_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,dxy_mean(0.99),redundant (r>0.9 with dxy_mean),drop
+dxy_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,,,keep
+us_10y_yield_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,us_10y_yield_close(1.00),,keep
+us_10y_yield_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw (bounded),0.0,False,bounded,,,keep
+us_10y_yield_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,us_10y_yield_mean(1.00),redundant (r>0.9 with us_10y_yield_mean),drop
+us_10y_yield_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,,,keep
+wheat_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,wheat_close(0.99),,keep
+wheat_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+wheat_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,wheat_mean(0.99),redundant (r>0.9 with wheat_mean),drop
+wheat_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+copper_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,copper_close(0.99),,keep
+copper_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw (bounded),0.0,False,bounded,,,keep
+copper_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,copper_mean(0.99),redundant (r>0.9 with copper_mean),drop
+copper_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
+us_13w_tbill_mean,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,us_13w_tbill_close(1.00),,keep
+us_13w_tbill_vol,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw (bounded),0.0,False,bounded,,,keep
+us_13w_tbill_close,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,normal-ish,us_13w_tbill_mean(1.00),redundant (r>0.9 with us_13w_tbill_mean),drop
+us_13w_tbill_pct_chg,Yahoo Finance,daily (agg to monthly),none (already monthly),t-1,raw,0.0,False,heavy-tailed,,,keep
