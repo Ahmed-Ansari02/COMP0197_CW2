@@ -879,14 +879,14 @@ def temporal_alignment(gpr_global, gpr_country, gdelt_tone, macro=None):
         merged.drop(columns=to_drop, inplace=True)
         print(f"  Dropped redundant: {to_drop}")
 
-    # --- Apply log1p transforms ---
+    # --- Apply log1p transforms (replace raw with log1p) ---
     log_applied = []
     for feat in LOG1P_FEATURES:
         if feat in merged.columns:
-            merged[f"{feat}_log1p"] = np.log1p(merged[feat])
+            merged[feat] = np.log1p(merged[feat])
             log_applied.append(feat)
     if log_applied:
-        print(f"  Applied log1p to: {log_applied}")
+        print(f"  Applied log1p (replaced raw): {log_applied}")
 
     # Save aligned panel
     out_path = os.path.join(OUTPUT_DIR, "member_c_final.csv")
