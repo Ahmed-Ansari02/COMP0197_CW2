@@ -98,10 +98,6 @@ All features are lagged by t-1. Features marked log1p are log1p-transformed to h
 | `ucdp_non_state_events` | UCDP | raw | Non-state conflict events (type=2) |
 | `ucdp_one_sided_events` | UCDP | raw | One-sided violence events (type=3) |
 | `ucdp_has_conflict` | UCDP | binary | Any events recorded this month |
-| `acled_fatalities` | ACLED | log1p | Total reported fatalities |
-| `acled_battle_count` | ACLED | log1p | Battle events |
-| `acled_explosion_count` | ACLED | raw | Explosions/remote violence events |
-| `acled_violence_count` | ACLED | raw | Violence against civilians events |
 | `gdelt_conflict_event_count` | GDELT | log1p | CAMEO 18/19/20 events — assault, fight, mass violence |
 | `gdelt_goldstein_mean` | GDELT | raw | Mean Goldstein hostility score across conflict events |
 
@@ -111,13 +107,9 @@ Added log-difference change features — computed as `log1p(x at t-1) - log1p(x 
 |---------|-------------|
 | `ucdp_fatalities_best_ld` | Log-difference of verified fatalities (t-1 vs t-2) |
 | `ucdp_event_count_ld` | Log-difference of conflict event count (t-1 vs t-2) |
-| `acled_fatalities_ld` | Log-difference of ACLED-reported fatalities (t-1 vs t-2) |
 | `gdelt_conflict_event_count_ld` | Log-difference of media-reported conflict events (t-1 vs t-2) |
 
-Dropped from full set (`member_a_final.csv`) as redundant or overlapping with member C:
-- `acled_event_count` — redundant with event type breakdown
-- `acled_peak_fatalities` — redundant with `ucdp_peak_event_fatalities` and `acled_fatalities`
-- `acled_protest_count`, `acled_riot_count` — overlap with member C's GDELT protest signal
+Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `gdelt_protest_event_count` — overlap with member C's GDELT tone features
 
 ### Member C outputs

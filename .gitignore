@@ -17,3 +17,8 @@ __pycache__/
 
 # Large raw data files (re-downloadable)
 data/raw/
+
+# ACLED outputs (not tracked — requires individual API auth)
+data/processed/member_a/acled_panel.csv
+data/processed/member_a/acled_cache.csv
+analysis/member_a/profiles/acled_*.png

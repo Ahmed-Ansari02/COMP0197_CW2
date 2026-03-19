@@ -265,32 +265,39 @@ def download_acled_api():
 
     os.makedirs(os.path.dirname(ACLED_CACHE), exist_ok=True)
     fields  = "event_date|country|event_type|fatalities"
-    limit   = 5000
-    offset  = 0
+    limit   = 10000
     records = []
 
-    print("  downloading (this takes ~10 minutes for the full dataset)...")
-    while True:
-        r = session.get(
-            "https://acleddata.com/api/acled/read",
-            params={
-                "fields":  fields,
-                "limit":   limit,
-                "offset":  offset,
-                "event_date":       f"{PANEL_START[:4]}-01-01",
-                "event_date_where": ">=",
-            },
-        )
-        if not r.ok:
-            print(f"  ERROR: request failed at offset {offset} ({r.status_code})")
-            break
-        batch = r.json().get("data", [])
-        if not batch:
-            break
-        records.extend(batch)
-        offset += limit
-        if offset % 50000 == 0:
-            print(f"  {offset:,} events downloaded...")
+    # Paginate year-by-year to avoid offset looping issues with the ACLED API.
+    # ACLED starts from 1997; panel ends 2025-12.
+    years = range(1997, int(PANEL_END[:4]) + 1)
+    print(f"  downloading year by year (1997–{PANEL_END[:4]})...")
+
+    for year in years:
+        offset = 0
+        year_count = 0
+        while True:
+            r = session.get(
+                "https://acleddata.com/api/acled/read",
+                params={
+                    "fields":            fields,
+                    "limit":             limit,
+                    "offset":            offset,
+                    "year":              year,
+                    "event_type":        "Battles|Explosions/Remote violence|Violence against civilians",
+                },
+            )
+            if not r.ok:
+                print(f"  ERROR: {year} offset {offset} ({r.status_code})")
+                break
+            batch = r.json().get("data", [])
+            if not batch:
+                break
+            records.extend(batch)
+            offset     += limit
+            year_count += len(batch)
+            print(f"  {year} — {year_count:,} events so far...", end="\r")
+        print(f"  {year}: {year_count:,} events total")
 
     df = pd.DataFrame(records)
     df.to_csv(ACLED_CACHE, index=False)

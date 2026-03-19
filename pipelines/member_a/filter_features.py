@@ -3,14 +3,10 @@ Filters member_a_final.csv down to the subset of features used for modelling,
 and adds log-difference change features to capture month-on-month escalation.
 
 Dropped features (redundant or overlap with member C):
-  - acled_protest_count / acled_riot_count: overlap with member C's GDELT protest signal
   - gdelt_protest_event_count: overlap with member C's GDELT tone features
-  - acled_peak_fatalities: redundant with ucdp_peak_event_fatalities and acled_fatalities
-  - acled_event_count: redundant once event type breakdown is available
 
 Added change features (log-difference handles zero-heavy data gracefully):
-  - ucdp_fatalities_best_ld, ucdp_event_count_ld
-  - acled_fatalities_ld, gdelt_conflict_event_count_ld
+  - ucdp_fatalities_best_ld, ucdp_event_count_ld, gdelt_conflict_event_count_ld
 
 Run after generate_conflict_dataset.py.
 """
@@ -23,11 +19,7 @@ BASE_DIR   = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 OUTPUT_DIR = os.path.join(BASE_DIR, "data", "processed", "member_a")
 
 DROP_COLS = [
-    "acled_protest_count",
-    "acled_riot_count",
     "gdelt_protest_event_count",
-    "acled_peak_fatalities",
-    "acled_event_count",
 ]
 
 # Features to compute log-difference on (already log1p-transformed in the main pipeline)
@@ -35,12 +27,21 @@ DROP_COLS = [
 CHANGE_COLS = [
     "ucdp_fatalities_best",
     "ucdp_event_count",
-    "acled_fatalities",
     "gdelt_conflict_event_count",
 ]
 
 df = pd.read_csv(os.path.join(OUTPUT_DIR, "member_a_final.csv"))
 filtered = df.drop(columns=[c for c in DROP_COLS if c in df.columns])
+
+# Zero-fill count/fatality features for countries present in the panel but absent
+# from a given source (e.g. GDELT-only countries have no UCDP record = 0 events,
+# not missing). Goldstein left as NaN — no events means no meaningful score.
+zero_fill_cols = [
+    c for c in filtered.columns
+    if c not in ["country_iso3", "year_month", "gdelt_goldstein_mean"]
+    and "ld" not in c
+]
+filtered[zero_fill_cols] = filtered[zero_fill_cols].fillna(0)
 
 # Compute log-differences within each country
 # Since features are already log1p-transformed and lagged, we take first difference
