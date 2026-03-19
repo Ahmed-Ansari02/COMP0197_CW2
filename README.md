@@ -130,15 +130,17 @@ Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `data/processed/member_b/quality_report.json` — coverage & range statistics
 - `analysis/member_b/` — missingness heatmaps, distribution plots
 
-Download datasets:
-https://www.fao.org/faostat/en/#data/CP -> bulk download
-https://data.imf.org/en/Data%20Explorer?datasetUrn=IMF.STA%3AER%284.0.1%29&timeseriesName=ABW.XDC_USD.PA_RT.M
-https://v-dem.net/data/the-v-dem-dataset/ -> Country-Year: V-Dem Full+Others
+Manual downloads required (place in `data/raw/`):
 
+| Source | URL | Notes |
+|--------|-----|-------|
+| V-Dem | https://v-dem.net/data/the-v-dem-dataset/ | Select "Country-Year: V-Dem Full+Others" (~300 MB) |
+| IMF IFS | https://data.imf.org/en/Data%20Explorer?datasetUrn=IMF.STA%3AER%284.0.1%29 | Exchange rates, download as CSV |
+| FAO CPI | https://www.fao.org/faostat/en/#data/CP | Use "Bulk Downloads → All Data" |
 
-To generate the model-ready file after running the main pipeline:
+REIGN, GDP, and Powell & Thyne are auto-downloaded with `--download`:
 ```bash
-  python pipelines/member_b/generate_structural_dataset.py --download        
+python pipelines/member_b/generate_structural_dataset.py --download
 ```
 
 #### Member B features
