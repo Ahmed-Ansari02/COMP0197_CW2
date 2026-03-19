@@ -14,3 +14,5 @@ __pycache__/
 # Credentials
 *.json
 !package.json
+
+/data/raw/
