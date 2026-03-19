@@ -16,5 +16,4 @@ __pycache__/
 !package.json
 
 # Large raw data files (re-downloadable)
-data/raw/GEDEvent_v25_1.csv
-data/raw/member_a/acled_cache.csv
+data/raw/
