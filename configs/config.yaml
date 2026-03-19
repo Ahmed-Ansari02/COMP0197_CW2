@@ -1,0 +1,53 @@
+# ──────────────────────────────────────────────────────────────────────
+# Structural/Contextual Features Configuration
+# ──────────────────────────────────────────────────────────────────────
+# All paths are relative to the project root.
+
+panel:
+  year_min: 2010
+  year_max: 2024
+  index_cols: [gwcode, year_month]
+  lag: 1  # months; applied to ALL features before handoff
+
+sources:
+  vdem:
+    csv: data/raw/V-Dem-CY-Full+Others-v15.csv
+    version: v15
+    manual_download: true  # must be downloaded from v-dem.net
+    notes: "~300MB; expert-coded annually; repeat (not interpolate) to monthly"
+
+  reign:
+    csv: data/raw/REIGN_2021_8.csv
+    cutoff: "2021-08"
+    strategy: option_a  # forward-fill slow features; NaN fast features post-cutoff
+    notes: "Data collection ceased Aug 2021"
+
+  economic:
+    exchange_rates:
+      csv: data/raw/imf_exchange_rates.csv
+      source: "IMF International Financial Statistics"
+      notes: "Domestic currency per USD, period average, monthly"
+
+    gdp:
+      csv: data/raw/gdp_growth_worldbank.csv
+      indicator: NY.GDP.MKTP.KD.ZG
+      source: "World Bank WDI"
+      notes: "Annual; expanded to monthly via repetition"
+
+    food_prices:
+      csv: data/raw/fao_food_cpi.csv
+      source: "FAO FAOSTAT Consumer Price Indices"
+      notes: "Monthly for ~126 countries"
+
+output:
+  parquet: data/intermediate/structural_features.parquet
+  quality_report: data/logs/member_b_quality_report.json
+
+feature_selection:
+  max_missingness: 0.40   # drop features above this threshold
+  min_variance: 0.001     # drop near-zero variance features
+  max_correlation: 0.90   # drop one of a pair exceeding this Spearman correlation
+
+normalisation:
+  skip: true  # Member C handles normalisation after train/test split
+  note: "V-Dem indices already on [0,1] by construction — inform Member C"
