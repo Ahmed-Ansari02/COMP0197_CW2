@@ -9,7 +9,7 @@ Predicting fatality counts as a probability distribution over a monthly rolling 
 ├── data/
 │   └── processed/
 │       ├── member_a/          # ACLED, UCDP, GDELT event data
-│       ├── member_b/          # V-Dem, REIGN, Economic indicators
+│       ├── member_b/          # V-Dem, REIGN, Powell & Thyne, Economic indicators
 │       └── member_c/          # GPR, GDELT tone, macro/volatility indicators
 │
 ├── pipelines/
@@ -170,25 +170,24 @@ All features are lagged by t-1. Panel covers 1985-01 to 2025-12.
 | `repression_index` | V-Dem | Derived: mean(corr, execorr) + (1 − clphy) / 2 |
 | `libdem_yoy_change` | V-Dem | Year-on-year change in liberal democracy index |
 
-**REIGN leader/regime data (monthly, forward-filled post-Aug 2021)**
+**REIGN leader/regime data (monthly, observed only — ends Aug 2021, NaN after)**
 
 | Feature | Source | Description |
 |---------|--------|-------------|
 | `tenure_months` | REIGN | Leader's tenure in months |
-| `age` | REIGN | Leader's age (extrapolated post-cutoff) |
+| `age` | REIGN | Leader's age |
 | `male` | REIGN | Leader gender (binary) |
 | `militarycareer` | REIGN | Military career background (binary) |
 | `elected` | REIGN | Leader was elected (binary) |
 | `leader_age_risk` | REIGN | Derived: age < 40 or > 75 (binary) |
 | `months_since_election` | REIGN | Months since last election |
 | `regime_change` | REIGN | Government type changed this month (binary) |
-| `coup_event` | REIGN | Irregular transfer of power (binary, patched by Powell & Thyne post-2021) |
+| `coup_event` | REIGN | Irregular transfer of power (binary) |
 | `prev_conflict` | REIGN | Previous conflict indicator |
 | `precip` | REIGN | Precipitation anomaly |
 | `months_since_structural_break` | REIGN | Months since last regime change or coup |
-| `reign_ffill_reliable` | REIGN | Forward-fill reliability flag (0 if post-cutoff coup invalidated) |
 | `reign_regime_*` | REIGN | One-hot encoded regime type (14 categories) |
-| `vdem_stale_flag` | REIGN | V-Dem annual data may be stale due to mid-year structural break |
+| `vdem_stale_flag` | Derived | V-Dem annual data may be stale due to mid-year structural break (uses REIGN + Powell & Thyne) |
 
 **Economic indicators (FAO food CPI available from 2000 only — NaN for 1985–1999)**
 
@@ -207,7 +206,7 @@ All features are lagged by t-1. Panel covers 1985-01 to 2025-12.
 | `food_cpi_acceleration` | FAO | Month-on-month change in year-on-year food CPI growth |
 | `food_price_spike` | FAO | Food price anomaly > 1.15 (binary) |
 
-**Powell & Thyne coup events (patches REIGN gap post-2021)**
+**Powell & Thyne coup events (independent source, 1950–present)**
 
 | Feature | Source | Description |
 |---------|--------|-------------|
@@ -223,7 +222,7 @@ All features are lagged by t-1. Panel covers 1985-01 to 2025-12.
 | Feature | Source | Description |
 |---------|--------|-------------|
 | `vdem_available` | Derived | V-Dem data available for this country-month (binary) |
-| `reign_available` | Derived | REIGN data available (binary) |
+| `reign_available` | Derived | REIGN data available (binary, 0 after Aug 2021) |
 | `fx_available` | Derived | Exchange rate data available (binary) |
 | `gdp_available` | Derived | GDP data available (binary) |
 | `food_available` | Derived | Food price data available (binary) |

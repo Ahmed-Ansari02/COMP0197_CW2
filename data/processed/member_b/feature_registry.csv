@@ -20,35 +20,34 @@ regime_type_3,V-Dem,float64,11.7,0.2161,0.4116,0.0,1.0,1
 governance_deficit,V-Dem,float64,11.7,0.533,0.2766,0.0613,0.9627,1
 repression_index,V-Dem,float64,11.9,0.4267,0.2755,0.0073,0.9635,1
 libdem_yoy_change,V-Dem,float64,12.42,0.0029,0.0358,-0.275,0.654,1
-tenure_months,REIGN,float64,4.21,86.2746,98.7858,1.0,698.0,1
-age,REIGN,float64,4.21,59.0071,11.0902,18.0,95.0,1
-male,REIGN,float64,4.21,0.9565,0.2039,0.0,1.0,1
-militarycareer,REIGN,float64,4.21,0.1598,0.3664,0.0,1.0,1
-elected,REIGN,float64,4.21,0.7221,0.448,0.0,1.0,1
-leader_age_risk,REIGN,float64,4.21,0.1129,0.3165,0.0,1.0,1
+tenure_months,REIGN,float64,14.75,83.4764,97.9752,1.0,647.0,1
+age,REIGN,float64,14.75,58.4668,10.9136,18.0,95.0,1
+male,REIGN,float64,14.75,0.9589,0.1985,0.0,1.0,1
+militarycareer,REIGN,float64,14.75,0.1589,0.3656,0.0,1.0,1
+elected,REIGN,float64,14.75,0.7225,0.4478,0.0,1.0,1
+leader_age_risk,REIGN,float64,14.75,0.1019,0.3025,0.0,1.0,1
 months_since_election,REIGN,float64,14.75,404.4292,125.7265,179.9606,618.9225,1
-regime_change,REIGN,float64,4.21,0.0077,0.0872,0.0,1.0,1
-coup_event,REIGN,float64,4.38,4.5005,2.0556,0.0,8.5273,1
-prev_conflict,REIGN,float64,4.21,0.1847,0.5981,0.0,9.0,1
+regime_change,REIGN,float64,14.75,0.0083,0.0906,0.0,1.0,1
+coup_event,REIGN,float64,14.75,5.0475,1.4066,0.0,8.5273,1
+prev_conflict,REIGN,float64,14.75,0.2043,0.6287,0.0,9.0,1
 precip,REIGN,float64,14.75,-0.0688,0.7768,-3.8055,4.922,1
-months_since_structural_break,REIGN,float64,60.11,151.4091,117.8396,0.0,482.0,1
-reign_ffill_reliable,REIGN,float64,1.26,0.9964,0.0595,0.0,1.0,1
-reign_regime_Dominant Party,REIGN,float64,1.26,0.1107,0.3137,0.0,1.0,1
-reign_regime_Foreign/Occupied,REIGN,float64,1.26,0.0148,0.1206,0.0,1.0,1
-reign_regime_Indirect Military,REIGN,float64,1.26,0.0019,0.044,0.0,1.0,1
-reign_regime_Military,REIGN,float64,1.26,0.0129,0.113,0.0,1.0,1
-reign_regime_Military-Personal,REIGN,float64,1.26,0.0141,0.118,0.0,1.0,1
-reign_regime_Monarchy,REIGN,float64,1.26,0.0631,0.2432,0.0,1.0,1
-reign_regime_Oligarchy,REIGN,float64,1.26,0.0012,0.0347,0.0,1.0,1
-reign_regime_Parliamentary Democracy,REIGN,float64,1.26,0.3362,0.4724,0.0,1.0,1
-reign_regime_Party-Military,REIGN,float64,1.26,0.0075,0.0861,0.0,1.0,1
-reign_regime_Party-Personal,REIGN,float64,1.26,0.0341,0.1816,0.0,1.0,1
-reign_regime_Party-Personal-Military Hybrid,REIGN,float64,1.26,0.0117,0.1077,0.0,1.0,1
-reign_regime_Personal Dictatorship,REIGN,float64,1.26,0.1208,0.3259,0.0,1.0,1
-reign_regime_Presidential Democracy,REIGN,float64,1.26,0.2235,0.4166,0.0,1.0,1
-reign_regime_Provisional - Civilian,REIGN,float64,1.26,0.0093,0.096,0.0,1.0,1
-reign_regime_Provisional - Military,REIGN,float64,1.26,0.0036,0.0595,0.0,1.0,1
-reign_regime_Warlordism,REIGN,float64,1.26,0.0047,0.0682,0.0,1.0,1
+months_since_structural_break,REIGN,float64,73.08,125.3029,102.1735,0.0,431.0,1
+reign_regime_Dominant Party,REIGN,float64,14.75,0.1185,0.3232,0.0,1.0,1
+reign_regime_Foreign/Occupied,REIGN,float64,14.75,0.0158,0.1247,0.0,1.0,1
+reign_regime_Indirect Military,REIGN,float64,14.75,0.0022,0.0473,0.0,1.0,1
+reign_regime_Military,REIGN,float64,14.75,0.0137,0.1162,0.0,1.0,1
+reign_regime_Military-Personal,REIGN,float64,14.75,0.0151,0.1218,0.0,1.0,1
+reign_regime_Monarchy,REIGN,float64,14.75,0.0661,0.2484,0.0,1.0,1
+reign_regime_Oligarchy,REIGN,float64,14.75,0.0014,0.0374,0.0,1.0,1
+reign_regime_Parliamentary Democracy,REIGN,float64,14.75,0.3437,0.4749,0.0,1.0,1
+reign_regime_Party-Military,REIGN,float64,14.75,0.008,0.0891,0.0,1.0,1
+reign_regime_Party-Personal,REIGN,float64,14.75,0.0344,0.1823,0.0,1.0,1
+reign_regime_Party-Personal-Military Hybrid,REIGN,float64,14.75,0.0129,0.113,0.0,1.0,1
+reign_regime_Personal Dictatorship,REIGN,float64,14.75,0.127,0.333,0.0,1.0,1
+reign_regime_Presidential Democracy,REIGN,float64,14.75,0.2247,0.4174,0.0,1.0,1
+reign_regime_Provisional - Civilian,REIGN,float64,14.75,0.0089,0.0937,0.0,1.0,1
+reign_regime_Provisional - Military,REIGN,float64,14.75,0.0028,0.0531,0.0,1.0,1
+reign_regime_Warlordism,REIGN,float64,14.75,0.0048,0.0689,0.0,1.0,1
 fx_pct_change,IMF IFS,float64,14.33,0.2619,68.502,-1.0,19332.3333,1
 fx_volatility,IMF IFS,float64,14.53,0.4563,68.5548,0.0,11161.5279,1
 fx_volatility_log,IMF IFS,float64,14.53,0.0192,0.1086,0.0,9.3203,1
@@ -67,9 +66,9 @@ pt_coup_count,Powell & Thyne,float64,0.2,0.0018,0.043,0.0,2.0,1
 pt_coup_event,Powell & Thyne,float64,0.2,0.0018,0.0423,0.0,1.0,1
 pt_cumulative_coups,Powell & Thyne,float64,0.2,0.5574,1.2616,0.0,9.0,1
 pt_months_since_coup,Powell & Thyne,float64,76.31,142.141,113.8223,0.0,484.0,1
-vdem_stale_flag,REIGN,float64,0.2,0.0187,0.1356,0.0,1.0,1
+vdem_stale_flag,REIGN,float64,0.2,0.0227,0.1489,0.0,1.0,1
 vdem_available,Derived (missingness),int64,0.0,0.8789,0.3262,0.0,1.0,1
-reign_available,REIGN,int64,0.0,0.9579,0.2007,0.0,1.0,1
+reign_available,REIGN,int64,0.0,0.8525,0.3546,0.0,1.0,1
 fx_available,IMF IFS,int64,0.0,0.8547,0.3524,0.0,1.0,1
 food_available,FAO,int64,0.0,0.5667,0.4955,0.0,1.0,1
 gdp_available,World Bank,int64,0.0,0.4706,0.4991,0.0,1.0,1

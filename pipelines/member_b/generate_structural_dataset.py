@@ -11,7 +11,7 @@ Sources:
   3. IMF IFS exchange rates (monthly currency data)
   4. World Bank WDI GDP growth (annual, expanded to monthly)
   5. FAO FAOSTAT food CPI (monthly, ~126 countries)
-  6. Powell & Thyne coup d'etat dataset (event-level, patches REIGN gap)
+  6. Powell & Thyne coup d'etat dataset (event-level, 1950–present)
 
 Requirements:
   pip install pandas numpy pyarrow requests pyyaml matplotlib seaborn
@@ -40,8 +40,9 @@ Notes:
   - All features lagged by t-1 to prevent temporal leakage
   - Missingness encoded as informative binary indicators
   - No normalisation — Member C handles this after train/test split
-  - REIGN post-2021 gap: slow features forward-filled, fast features NaN
-  - Powell & Thyne patches REIGN coup data from 2021-09 onwards
+  - REIGN ends Aug 2021: no forward-fill, features are NaN post-cutoff
+  - reign_available missingness flag lets the model learn from the gap
+  - Powell & Thyne is an independent source covering 1985–present (not a REIGN patch)
 
 """
 
@@ -477,8 +478,6 @@ REIGN_RAW_COLS = [
     "tenure_months", "age", "male", "militarycareer",
     "lastelection", "loss", "irregular", "prev_conflict", "precip",
 ]
-SLOW_FEATURES = ["government", "elected", "male", "militarycareer", "leader", "prev_conflict"]
-FAST_FEATURES = ["loss", "irregular"]
 
 
 def ingest_reign(csv_path):
@@ -507,99 +506,53 @@ def ingest_reign(csv_path):
         print(f"  WARNING: unmapped REIGN GW codes: {unmapped[:10]}")
     reign = reign.dropna(subset=["country_iso3"]).copy()
 
-    # Handle coverage gap (post-Aug 2021)
-    countries = reign["country_iso3"].unique()
-    all_months = pd.period_range(start=PANEL_START, end=PANEL_END, freq="M").astype(str).tolist()
-    skeleton = pd.DataFrame(
-        [(c, ym) for c in countries for ym in all_months],
-        columns=["country_iso3", "year_month"],
-    )
-    reign_extended = skeleton.merge(reign, on=["country_iso3", "year_month"], how="left")
-    reign_extended = reign_extended.sort_values(["country_iso3", "year_month"]).reset_index(drop=True)
-
-    # Forward-fill slow features
-    slow_avail = [c for c in SLOW_FEATURES if c in reign_extended.columns]
-    reign_extended[slow_avail] = reign_extended.groupby("country_iso3")[slow_avail].ffill()
-
-    # NaN out fast features post-cutoff
-    fast_avail = [c for c in FAST_FEATURES if c in reign_extended.columns]
-    post_cutoff = reign_extended["year_month"] > REIGN_CUTOFF
-    reign_extended.loc[post_cutoff, fast_avail] = np.nan
-
-    # Extrapolate age and tenure
-    if "age" in reign_extended.columns:
-        reign_extended["age"] = reign_extended.groupby("country_iso3")["age"].ffill()
-        for c in countries:
-            mask = (reign_extended["country_iso3"] == c) & post_cutoff
-            if mask.any():
-                pre = reign_extended.loc[
-                    (reign_extended["country_iso3"] == c) & (reign_extended["year_month"] <= REIGN_CUTOFF)
-                ]
-                if len(pre) > 0:
-                    base_age = pre.iloc[-1]["age"]
-                    if pd.notna(base_age):
-                        n = mask.sum()
-                        reign_extended.loc[mask, "age"] = base_age + np.arange(1, n + 1) / 12.0
-
-    if "tenure_months" in reign_extended.columns:
-        reign_extended["tenure_months"] = reign_extended.groupby("country_iso3")["tenure_months"].ffill()
-        for c in countries:
-            mask = (reign_extended["country_iso3"] == c) & post_cutoff
-            if mask.any():
-                pre = reign_extended.loc[
-                    (reign_extended["country_iso3"] == c) & (reign_extended["year_month"] <= REIGN_CUTOFF)
-                ]
-                if len(pre) > 0:
-                    base_tenure = pre.iloc[-1]["tenure_months"]
-                    if pd.notna(base_tenure):
-                        n = mask.sum()
-                        reign_extended.loc[mask, "tenure_months"] = base_tenure + np.arange(1, n + 1)
-
-    print(f"  Coverage gap: {post_cutoff.sum()} country-months forward-filled after {REIGN_CUTOFF}")
+    # No forward-fill: only use actual observed data (up to Aug 2021)
+    reign = reign[reign["year_month"] <= REIGN_CUTOFF].copy()
+    reign = reign.sort_values(["country_iso3", "year_month"]).reset_index(drop=True)
+    print(f"  Using observed data only (up to {REIGN_CUTOFF}): {len(reign)} rows")
 
     # Derive features
-    if "age" in reign_extended.columns:
-        reign_extended["leader_age_risk"] = np.where(
-            (reign_extended["age"] < 40) | (reign_extended["age"] > 75), 1, 0
+    if "age" in reign.columns:
+        reign["leader_age_risk"] = np.where(
+            (reign["age"] < 40) | (reign["age"] > 75), 1, 0
         )
-        reign_extended.loc[reign_extended["age"].isna(), "leader_age_risk"] = np.nan
+        reign.loc[reign["age"].isna(), "leader_age_risk"] = np.nan
 
-    if "lastelection" in reign_extended.columns:
-        reign_extended["lastelection_parsed"] = pd.to_datetime(reign_extended["lastelection"], errors="coerce")
-        reign_extended["year_month_dt"] = pd.to_datetime(reign_extended["year_month"] + "-01")
-        reign_extended["months_since_election"] = (
-            (reign_extended["year_month_dt"] - reign_extended["lastelection_parsed"]).dt.days / 30.44
+    if "lastelection" in reign.columns:
+        reign["lastelection_parsed"] = pd.to_datetime(reign["lastelection"], errors="coerce")
+        reign["year_month_dt"] = pd.to_datetime(reign["year_month"] + "-01")
+        reign["months_since_election"] = (
+            (reign["year_month_dt"] - reign["lastelection_parsed"]).dt.days / 30.44
         )
-        reign_extended.loc[reign_extended["months_since_election"] < 0, "months_since_election"] = np.nan
-        reign_extended.drop(columns=["lastelection_parsed", "year_month_dt"], inplace=True)
+        reign.loc[reign["months_since_election"] < 0, "months_since_election"] = np.nan
+        reign.drop(columns=["lastelection_parsed", "year_month_dt"], inplace=True)
 
-    if "government" in reign_extended.columns:
-        reign_extended = reign_extended.sort_values(["country_iso3", "year_month"])
-        reign_extended["regime_change"] = (
-            reign_extended.groupby("country_iso3")["government"].shift(1) != reign_extended["government"]
+    if "government" in reign.columns:
+        reign["regime_change"] = (
+            reign.groupby("country_iso3")["government"].shift(1) != reign["government"]
         ).astype(float)
-        first_mask = ~reign_extended.duplicated(subset=["country_iso3"], keep="first")
-        reign_extended.loc[first_mask, "regime_change"] = 0.0
-        reign_extended.loc[reign_extended["government"].isna(), "regime_change"] = np.nan
+        first_mask = ~reign.duplicated(subset=["country_iso3"], keep="first")
+        reign.loc[first_mask, "regime_change"] = 0.0
+        reign.loc[reign["government"].isna(), "regime_change"] = np.nan
 
-    if "irregular" in reign_extended.columns:
-        reign_extended["coup_event"] = reign_extended["irregular"].fillna(0).astype(float)
-        reign_extended.loc[reign_extended["irregular"].isna(), "coup_event"] = np.nan
+    if "irregular" in reign.columns:
+        reign["coup_event"] = reign["irregular"].fillna(0).astype(float)
+        reign.loc[reign["irregular"].isna(), "coup_event"] = np.nan
 
     # One-hot encode regime type
-    if "government" in reign_extended.columns:
-        regime_dummies = pd.get_dummies(reign_extended["government"], prefix="reign_regime").astype(int)
-        reign_extended = pd.concat([reign_extended, regime_dummies], axis=1)
+    if "government" in reign.columns:
+        regime_dummies = pd.get_dummies(reign["government"], prefix="reign_regime").astype(int)
+        reign = pd.concat([reign, regime_dummies], axis=1)
 
     # Structural break detection
-    reign_extended["structural_break"] = 0.0
-    if "regime_change" in reign_extended.columns:
-        reign_extended["structural_break"] = reign_extended["structural_break"].where(
-            reign_extended["regime_change"] != 1, 1.0
+    reign["structural_break"] = 0.0
+    if "regime_change" in reign.columns:
+        reign["structural_break"] = reign["structural_break"].where(
+            reign["regime_change"] != 1, 1.0
         )
-    if "coup_event" in reign_extended.columns:
-        reign_extended["structural_break"] = reign_extended["structural_break"].where(
-            reign_extended["coup_event"] != 1, 1.0
+    if "coup_event" in reign.columns:
+        reign["structural_break"] = reign["structural_break"].where(
+            reign["coup_event"] != 1, 1.0
         )
 
     def _months_since_break(group):
@@ -613,23 +566,11 @@ def ingest_reign(csv_path):
                 result.iloc[i] = i - last_break_idx
         return result
 
-    reign_extended["months_since_structural_break"] = reign_extended.groupby("country_iso3")[
+    reign["months_since_structural_break"] = reign.groupby("country_iso3")[
         "structural_break"
     ].transform(_months_since_break)
 
-    # Forward-fill reliability flag
-    reign_extended["reign_ffill_reliable"] = 1.0
-    for c in countries:
-        gw_mask = reign_extended["country_iso3"] == c
-        pre_cutoff_breaks = reign_extended.loc[
-            gw_mask & (reign_extended["year_month"] > "2021-02")
-            & (reign_extended["year_month"] <= REIGN_CUTOFF)
-            & (reign_extended["structural_break"] == 1.0)
-        ]
-        if len(pre_cutoff_breaks) > 0:
-            reign_extended.loc[gw_mask & post_cutoff, "reign_ffill_reliable"] = 0.0
-
-    reign_extended.drop(columns=["structural_break"], inplace=True)
+    reign.drop(columns=["structural_break"], inplace=True)
 
     # Select output columns
     meta_cols = ["country_iso3", "year_month"]
@@ -637,17 +578,17 @@ def ingest_reign(csv_path):
         "tenure_months", "age", "male", "militarycareer", "elected",
         "leader_age_risk", "months_since_election",
         "regime_change", "coup_event", "prev_conflict", "precip",
-        "months_since_structural_break", "reign_ffill_reliable",
+        "months_since_structural_break",
     ]
-    regime_cols = [c for c in reign_extended.columns if c.startswith("reign_regime_")]
-    keep_cols = meta_cols + [c for c in feature_cols if c in reign_extended.columns] + regime_cols
-    reign_extended = reign_extended[keep_cols].copy()
+    regime_cols = [c for c in reign.columns if c.startswith("reign_regime_")]
+    keep_cols = meta_cols + [c for c in feature_cols if c in reign.columns] + regime_cols
+    reign = reign[keep_cols].copy()
 
     # Deduplicate
-    reign_extended = reign_extended.drop_duplicates(subset=["country_iso3", "year_month"], keep="last")
+    reign = reign.drop_duplicates(subset=["country_iso3", "year_month"], keep="last")
 
-    print(f"  REIGN complete: {len(reign_extended)} rows, {reign_extended['country_iso3'].nunique()} countries")
-    return reign_extended
+    print(f"  REIGN complete: {len(reign)} rows, {reign['country_iso3'].nunique()} countries")
+    return reign
 
 
 # ============================================================
@@ -1021,7 +962,8 @@ def ingest_powell_thyne(tsv_path):
     return monthly
 
 
-def integrate_coups_with_reign(panel, monthly_coups):
+def integrate_coups_with_panel(panel, monthly_coups):
+    """Merge Powell & Thyne coup data as an independent source across the full panel."""
     if monthly_coups is None:
         return panel
 
@@ -1052,27 +994,6 @@ def integrate_coups_with_reign(panel, monthly_coups):
         "pt_coup_event"
     ].transform(_months_since_event)
 
-    # Patch REIGN coup_event NaNs with Powell & Thyne post-cutoff
-    if "coup_event" in panel.columns:
-        post_cutoff = panel["year_month"] > REIGN_CUTOFF
-        reign_nan = panel["coup_event"].isna()
-        patch_mask = post_cutoff & reign_nan
-        panel.loc[patch_mask, "coup_event"] = panel.loc[patch_mask, "pt_coup_event"].astype(float)
-
-        # Invalidate REIGN forward-fill for countries with post-cutoff successful coups
-        if "reign_ffill_reliable" in panel.columns:
-            post_coup_countries = panel.loc[
-                post_cutoff & (panel["pt_coup_successful"] == 1), "country_iso3"
-            ].unique()
-            for c in post_coup_countries:
-                coup_month = panel.loc[
-                    (panel["country_iso3"] == c) & post_cutoff & (panel["pt_coup_successful"] == 1),
-                    "year_month"
-                ].min()
-                invalidate_mask = (panel["country_iso3"] == c) & (panel["year_month"] >= coup_month)
-                panel.loc[invalidate_mask, "reign_ffill_reliable"] = 0.0
-                print(f"  {c}: REIGN forward-fill invalidated from {coup_month} (post-cutoff coup)")
-
     return panel
 
 
@@ -1083,8 +1004,9 @@ def integrate_coups_with_reign(panel, monthly_coups):
 def cross_validate_structural_breaks(panel):
     has_vdem = "v2x_libdem" in panel.columns
     has_reign_break = "regime_change" in panel.columns
+    has_pt_coup = "pt_coup_event" in panel.columns
 
-    if not has_reign_break:
+    if not has_reign_break and not has_pt_coup:
         panel["vdem_stale_flag"] = 0
         return panel
 
@@ -1100,10 +1022,13 @@ def cross_validate_structural_breaks(panel):
             for year in c_data["_year"].unique():
                 year_mask = c_mask & (panel["_year"] == year)
                 year_data = panel.loc[year_mask]
-                breaks_in_year = year_data[
-                    (year_data.get("regime_change", pd.Series(dtype=float)) == 1)
-                    | (year_data.get("coup_event", pd.Series(dtype=float)) == 1)
-                ]
+                # Check for breaks from both REIGN and Powell & Thyne
+                break_cond = pd.Series(False, index=year_data.index)
+                if has_reign_break:
+                    break_cond = break_cond | (year_data["regime_change"] == 1)
+                if has_pt_coup:
+                    break_cond = break_cond | (year_data["pt_coup_event"] == 1)
+                breaks_in_year = year_data[break_cond]
                 if len(breaks_in_year) > 0:
                     first_break_month = breaks_in_year["year_month"].min()
                     stale_mask = year_mask & (panel["year_month"] > first_break_month)
@@ -1281,8 +1206,7 @@ def save_feature_registry(df):
         elif col.startswith("reign_") or col in ("tenure_months", "age", "male", "militarycareer", "elected",
                                                    "leader_age_risk", "months_since_election", "regime_change",
                                                    "coup_event", "prev_conflict", "precip",
-                                                   "months_since_structural_break", "reign_ffill_reliable",
-                                                   "vdem_stale_flag"):
+                                                   "months_since_structural_break", "vdem_stale_flag"):
             source = "REIGN"
         elif col.startswith("fx_"):
             source = "IMF IFS"
@@ -1402,8 +1326,8 @@ def main():
             print(f"  Merging {name} ({len(df)} rows)...")
             panel = panel.merge(df, on=["country_iso3", "year_month"], how="left")
 
-    # Integrate Powell & Thyne with REIGN
-    panel = integrate_coups_with_reign(panel, coups_df)
+    # Integrate Powell & Thyne as independent source
+    panel = integrate_coups_with_panel(panel, coups_df)
 
     # Cross-validate V-Dem against structural breaks
     panel = cross_validate_structural_breaks(panel)
