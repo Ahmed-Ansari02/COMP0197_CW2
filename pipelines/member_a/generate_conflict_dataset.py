@@ -76,6 +76,8 @@ LOG1P_FEATURES = [
     "gdelt_conflict_event_count",
 ]
 
+ACLED_CACHE = os.path.join(RAW_DIR, "member_a", "acled_cache.csv")
+
 # UCDP uses GW country names — many don't match ISO standards directly
 GW_NAME_TO_ISO3 = {
     "Cambodia (Kampuchea)":            "KHM",
@@ -207,7 +209,6 @@ def aggregate_ucdp(df):
     agg = df.groupby(["country_iso3", "year_month"]).agg(
         ucdp_event_count          =("id",               "count"),
         ucdp_fatalities_best      =("best",             "sum"),
-        ucdp_fatalities_low       =("low",              "sum"),
         ucdp_fatalities_high      =("high",             "sum"),
         ucdp_civilian_deaths      =("deaths_civilians", "sum"),
         ucdp_peak_event_fatalities=("best",             "max"),
@@ -229,28 +230,84 @@ def aggregate_ucdp(df):
     return panel
 
 
-def load_acled():
-    if not os.path.exists(ACLED_DIR):
-        print("\n[ACLED] directory not found — skipping")
+def download_acled_api():
+    """
+    Download ACLED events via cookie-based auth. Reads credentials from
+    ACLED_EMAIL and ACLED_PASSWORD environment variables.
+    Results are cached to data/raw/member_a/acled_cache.csv to avoid
+    re-downloading on every run.
+    """
+    import requests
+
+    if os.path.exists(ACLED_CACHE):
+        print(f"\n[ACLED] loading from cache: {ACLED_CACHE}")
+        df = pd.read_csv(ACLED_CACHE, low_memory=False)
+        print(f"  {len(df):,} events")
+        return df
+
+    email    = os.environ.get("ACLED_EMAIL")
+    password = os.environ.get("ACLED_PASSWORD")
+    if not email or not password:
+        print("\n[ACLED] ACLED_EMAIL / ACLED_PASSWORD not set — skipping")
         return None
-    files = [f for f in os.listdir(ACLED_DIR) if f.endswith(".csv")]
-    if not files:
-        print("\n[ACLED] no files found — skipping")
+
+    print("\n[ACLED] authenticating...")
+    session = requests.Session()
+    resp = session.post(
+        "https://acleddata.com/user/login?_format=json",
+        json={"name": email, "pass": password},
+        headers={"Content-Type": "application/json"},
+    )
+    if not resp.ok:
+        print(f"  ERROR: login failed ({resp.status_code})")
         return None
-    print(f"\n[ACLED] loading {len(files)} file(s)...")
-    dfs = []
-    for f in files:
-        tmp = pd.read_csv(os.path.join(ACLED_DIR, f), low_memory=False)
-        print(f"  {f}: {len(tmp):,} rows")
-        dfs.append(tmp)
-    df = pd.concat(dfs, ignore_index=True)
-    print(f"  total: {len(df):,} events")
+    print("  logged in")
+
+    os.makedirs(os.path.dirname(ACLED_CACHE), exist_ok=True)
+    fields  = "event_date|country|event_type|fatalities"
+    limit   = 10000
+    records = []
+
+    # Paginate year-by-year to avoid offset looping issues with the ACLED API.
+    # ACLED starts from 1997; panel ends 2025-12.
+    years = range(1997, int(PANEL_END[:4]) + 1)
+    print(f"  downloading year by year (1997–{PANEL_END[:4]})...")
+
+    for year in years:
+        offset = 0
+        year_count = 0
+        while True:
+            r = session.get(
+                "https://acleddata.com/api/acled/read",
+                params={
+                    "fields":            fields,
+                    "limit":             limit,
+                    "offset":            offset,
+                    "year":              year,
+                    "event_type":        "Battles|Explosions/Remote violence|Violence against civilians",
+                },
+            )
+            if not r.ok:
+                print(f"  ERROR: {year} offset {offset} ({r.status_code})")
+                break
+            batch = r.json().get("data", [])
+            if not batch:
+                break
+            records.extend(batch)
+            offset     += limit
+            year_count += len(batch)
+            print(f"  {year} — {year_count:,} events so far...", end="\r")
+        print(f"  {year}: {year_count:,} events total")
+
+    df = pd.DataFrame(records)
+    df.to_csv(ACLED_CACHE, index=False)
+    print(f"  done — {len(df):,} events cached to {ACLED_CACHE}")
     return df
 
 
 def aggregate_acled(df):
     print("\n[ACLED] aggregating to country-month...")
-    df["event_date"] = pd.to_datetime(df["event_date"], dayfirst=True, errors="coerce")
+    df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
     df["year_month"] = df["event_date"].dt.to_period("M").astype(str)
 
     name_map = {n: country_name_to_iso3(n) for n in df["country"].unique()}
@@ -261,16 +318,17 @@ def aggregate_acled(df):
     df["country_iso3"] = df["country"].map(name_map)
     df = df.dropna(subset=["country_iso3", "year_month"])
     df = df[(df["year_month"] >= PANEL_START) & (df["year_month"] <= PANEL_END)]
+    df["fatalities"] = pd.to_numeric(df["fatalities"], errors="coerce").fillna(0)
 
     agg = df.groupby(["country_iso3", "year_month"]).agg(
-        acled_event_count    =("event_id_cnty", "count"),
-        acled_fatalities     =("fatalities",    "sum"),
-        acled_peak_fatalities=("fatalities",    "max"),
-        acled_battle_count   =("event_type",    lambda x: (x == "Battles").sum()),
-        acled_explosion_count=("event_type",    lambda x: (x == "Explosions/Remote violence").sum()),
-        acled_violence_count =("event_type",    lambda x: (x == "Violence against civilians").sum()),
-        acled_protest_count  =("event_type",    lambda x: (x == "Protests").sum()),
-        acled_riot_count     =("event_type",    lambda x: (x == "Riots").sum()),
+        acled_event_count    =("event_type",  "count"),
+        acled_fatalities     =("fatalities",  "sum"),
+        acled_peak_fatalities=("fatalities",  "max"),
+        acled_battle_count   =("event_type",  lambda x: (x == "Battles").sum()),
+        acled_explosion_count=("event_type",  lambda x: (x == "Explosions/Remote violence").sum()),
+        acled_violence_count =("event_type",  lambda x: (x == "Violence against civilians").sum()),
+        acled_protest_count  =("event_type",  lambda x: (x == "Protests").sum()),
+        acled_riot_count     =("event_type",  lambda x: (x == "Riots").sum()),
     ).reset_index()
 
     panel = build_full_panel(sorted(agg["country_iso3"].unique()))
@@ -297,8 +355,7 @@ def download_gdelt_conflict_bigquery(project_id):
         FORMAT_DATE('%Y-%m', PARSE_DATE('%Y%m%d', CAST(SQLDATE AS STRING))) AS year_month,
         COUNTIF(EventRootCode IN ('18','19','20')) AS gdelt_conflict_event_count,
         COUNTIF(EventRootCode = '14')              AS gdelt_protest_event_count,
-        AVG(GoldsteinScale)                        AS gdelt_goldstein_mean,
-        MIN(GoldsteinScale)                        AS gdelt_goldstein_min
+        AVG(GoldsteinScale)                        AS gdelt_goldstein_mean
     FROM `gdelt-bq.full.events`
     WHERE
         EventRootCode IN ('14','18','19','20')
@@ -340,7 +397,6 @@ def download_gdelt_conflict_bigquery(project_id):
         gdelt_conflict_event_count=("gdelt_conflict_event_count", "sum"),
         gdelt_protest_event_count =("gdelt_protest_event_count",  "sum"),
         gdelt_goldstein_mean      =("gdelt_goldstein_mean",       "mean"),
-        gdelt_goldstein_min       =("gdelt_goldstein_min",        "min"),
     ).reset_index()
 
     panel = build_full_panel(sorted(df["country_iso3"].unique()))
@@ -363,7 +419,7 @@ def merge_panels(ucdp, acled, gdelt):
 
     if gdelt is not None and not gdelt.empty:
         panel = panel.merge(gdelt, on=["country_iso3", "year_month"], how="outer")
-        for col in [c for c in panel.columns if c.startswith("gdelt_") and "goldstein" not in c]:
+        for col in [c for c in panel.columns if c.startswith("gdelt_") and c != "gdelt_goldstein_mean"]:
             panel[col] = panel[col].fillna(0)
 
     panel = panel[
@@ -406,7 +462,7 @@ def main():
     missingness_report(ucdp_panel, "ucdp")
     distribution_profile(ucdp_panel, [c for c in ucdp_panel.columns if c.startswith("ucdp_")], "ucdp")
 
-    acled_raw   = load_acled()
+    acled_raw   = download_acled_api()
     acled_panel = None
     if acled_raw is not None:
         acled_panel = aggregate_acled(acled_raw)
