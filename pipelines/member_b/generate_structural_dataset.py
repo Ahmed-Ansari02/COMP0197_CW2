@@ -3,7 +3,7 @@ Member B — Structural/Contextual Features Pipeline
 =====================================================
 
 Loads, cleans, and assembles governance, leader, economic, and coup data
-into a single (country, month) panel covering 2010-01 to 2024-12.
+into a single (country, month) panel covering 1985-01 to 2025-12.
 
 Sources:
   1. V-Dem v15/v16 (annual expert-coded governance indices, ~180 countries)
@@ -83,10 +83,10 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.join(REPORT_DIR, "missingness"), exist_ok=True)
 os.makedirs(os.path.join(REPORT_DIR, "profiles"), exist_ok=True)
 
-PANEL_START = "2010-01"
-PANEL_END = "2024-12"
-YEAR_MIN = 2010
-YEAR_MAX = 2024
+PANEL_START = "1985-01"
+PANEL_END = "2025-12"
+YEAR_MIN = 1985
+YEAR_MAX = 2025
 LAG_MONTHS = 1
 
 # Default raw file paths
@@ -94,7 +94,7 @@ VDEM_PATH = os.path.join(RAW_DIR, "V-Dem-CY-Full+Others-v16.csv")
 REIGN_PATH = os.path.join(RAW_DIR, "REIGN_2021_8.csv")
 FX_PATH = os.path.join(RAW_DIR, "imf_exchange_rates.csv")
 GDP_PATH = os.path.join(RAW_DIR, "gdp_growth_worldbank.csv")
-FOOD_PATH = os.path.join(RAW_DIR, "fao_food_cpi.csv")
+FOOD_PATH = os.path.join(RAW_DIR, "ConsumerPriceIndices_E_All_Data", "ConsumerPriceIndices_E_All_Data_NOFLAG.csv")
 COUPS_PATH = os.path.join(RAW_DIR, "powell_thyne_coups.tsv")
 
 REIGN_CUTOFF = "2021-08"
@@ -264,7 +264,7 @@ def download_reign(output_path=None):
     return output_path
 
 
-def download_gdp_worldbank(output_path=None, start_year=2005, end_year=2024):
+def download_gdp_worldbank(output_path=None, start_year=1980, end_year=2025):
     output_path = output_path or os.path.join(RAW_DIR, "gdp_growth_worldbank.csv")
     if os.path.exists(output_path) and os.path.getsize(output_path) > 100:
         print(f"  GDP already downloaded: {output_path}")
@@ -394,8 +394,8 @@ def ingest_vdem(csv_path):
         return None
 
     vdem = pd.read_csv(csv_path, usecols=VDEM_ID_COLS + VDEM_FEATURES, low_memory=False)
-    # Include 2009 as buffer for year-on-year change computation
-    vdem = vdem[(vdem["year"] >= 2009) & (vdem["year"] <= YEAR_MAX)].copy()
+    # Include YEAR_MIN-1 as buffer for year-on-year change computation
+    vdem = vdem[(vdem["year"] >= YEAR_MIN - 1) & (vdem["year"] <= YEAR_MAX)].copy()
     print(f"  Loaded {len(vdem)} country-years")
 
     # Expand annual -> monthly (repeat, NOT interpolate)
@@ -801,7 +801,7 @@ def ingest_gdp(csv_path):
     gdp = gdp.dropna(subset=["country_iso3"]).copy()
     gdp["year"] = gdp["year"].astype(int)
 
-    gdp = gdp[gdp["year"] >= 2005].copy()
+    gdp = gdp[gdp["year"] >= YEAR_MIN - 5].copy()
     gdp = gdp.sort_values(["country_iso3", "year"]).reset_index(drop=True)
 
     gdp["gdp_growth_deviation"] = gdp.groupby("country_iso3")["gdp_growth"].transform(
@@ -841,25 +841,50 @@ def ingest_food_prices(csv_path):
         print(f"  Food CPI CSV not found: {csv_path} — skipping")
         return None
 
-    if csv_path.endswith(".zip"):
-        with zipfile.ZipFile(csv_path) as zf:
-            csv_names = [n for n in zf.namelist() if n.endswith(".csv")]
-            if not csv_names:
-                raise ValueError(f"No CSV found inside {csv_path}")
-            with zf.open(csv_names[0]) as f:
-                food = pd.read_csv(f, low_memory=False, encoding="utf-8")
+    food = pd.read_csv(csv_path, low_memory=False, encoding="latin-1")
+
+    # Detect FAOSTAT bulk wide format (year columns like Y2000, Y2001, ...)
+    year_cols = [c for c in food.columns if re.match(r"^Y\d{4}$", c)]
+    is_bulk_wide = len(year_cols) > 0
+
+    if is_bulk_wide:
+        # FAOSTAT bulk download: wide format with Y2000..Y2025 columns
+        # Filter to Food CPI item only (Item Code 23013)
+        if "Item Code" in food.columns:
+            food = food[food["Item Code"] == 23013].copy()
+        print(f"  Bulk format detected: {len(food)} rows, {len(year_cols)} year columns")
+
+        # Map M49 -> ISO3
+        m49_col = None
+        for c in food.columns:
+            if "area code" in c.lower() and "m49" in c.lower():
+                m49_col = c
+                break
+        if m49_col is None:
+            m49_col = "Area Code (M49)"
+
+        food["m49_clean"] = food[m49_col].astype(str).str.replace("'", "").str.strip()
+        food["iso3"] = pd.to_numeric(food["m49_clean"], errors="coerce").astype("Int64").map(M49_TO_ISO3)
+
+        # Parse month from Months Code (7001=Jan, 7002=Feb, ..., 7012=Dec)
+        food["month"] = pd.to_numeric(food["Months Code"], errors="coerce") - 7000
+        food = food.dropna(subset=["month", "iso3"]).copy()
+
+        # Melt wide year columns to long format
+        id_cols = ["iso3", "month"]
+        food_long = food.melt(id_vars=id_cols, value_vars=year_cols,
+                              var_name="year_str", value_name="food_cpi")
+        food_long["year"] = food_long["year_str"].str[1:].astype(int)
+        food_long["food_cpi"] = pd.to_numeric(food_long["food_cpi"], errors="coerce")
+        food_long.drop(columns=["year_str"], inplace=True)
+        food = food_long
     else:
-        food = pd.read_csv(csv_path, low_memory=False)
-
-    MONTH_NAME_TO_NUM = {
-        "january": 1, "february": 2, "march": 3, "april": 4,
-        "may": 5, "june": 6, "july": 7, "august": 8,
-        "september": 9, "october": 10, "november": 11, "december": 12,
-    }
-
-    faostat_format = any(c.strip().lower() in ("months", "months code") for c in food.columns)
-
-    if faostat_format:
+        # Long format (original fao_food_cpi.csv or similar)
+        MONTH_NAME_TO_NUM = {
+            "january": 1, "february": 2, "march": 3, "april": 4,
+            "may": 5, "june": 6, "july": 7, "august": 8,
+            "september": 9, "october": 10, "november": 11, "december": 12,
+        }
         # Detect area code column
         m49_col, iso3_col = None, None
         for c in food.columns:
@@ -869,13 +894,6 @@ def ingest_food_prices(csv_path):
                 break
             if "area code" in cl and "m49" in cl:
                 m49_col = c
-            if "area code" in cl and "m49" not in cl and "iso3" not in cl:
-                sample = food[c].dropna().astype(str).iloc[:5].tolist()
-                if sample and all(s.isdigit() or s.startswith("'") for s in sample):
-                    m49_col = m49_col or c
-                elif sample and all(len(s) <= 3 and s.isalpha() for s in sample):
-                    iso3_col = iso3_col or c
-
         if iso3_col:
             food = food.rename(columns={iso3_col: "iso3"})
             food["iso3"] = food["iso3"].astype(str).str.strip().str.upper()
@@ -884,19 +902,23 @@ def ingest_food_prices(csv_path):
                 pd.to_numeric(food[m49_col], errors="coerce").astype("Int64").map(M49_TO_ISO3)
             )
         else:
-            raise ValueError("FAOSTAT CSV must contain an area code column")
+            col_map = {}
+            for c in food.columns:
+                cl = c.lower().strip()
+                if cl in ("country_code", "iso3", "iso", "area_code"):
+                    col_map[c] = "iso3"
+                elif cl == "year": col_map[c] = "year"
+                elif cl == "month": col_map[c] = "month"
+                elif cl in ("food_cpi", "value", "cpi_food", "food_price_index"):
+                    col_map[c] = "food_cpi"
+            food = food.rename(columns=col_map)
 
         # Parse months
         months_col = None
         for c in food.columns:
-            if c.strip().lower() == "months":
+            if c.strip().lower() in ("months", "months code"):
                 months_col = c
                 break
-        if months_col is None:
-            for c in food.columns:
-                if c.strip().lower() == "months code":
-                    months_col = c
-                    break
         if months_col:
             sample_val = str(food[months_col].dropna().iloc[0]).strip().lower()
             if sample_val in MONTH_NAME_TO_NUM:
@@ -907,33 +929,9 @@ def ingest_food_prices(csv_path):
                     food["month"] = food["month"] - 7000
             food = food.dropna(subset=["month"]).copy()
 
-        year_col = None
-        for c in food.columns:
-            if c.strip().lower() in ("year", "year code"):
-                year_col = c
-                break
-        if year_col:
-            food = food.rename(columns={year_col: "year"})
-
-        value_col = None
-        for c in food.columns:
-            if c.strip().lower() == "value":
-                value_col = c
-                break
-        if value_col:
-            food = food.rename(columns={value_col: "food_cpi"})
-        food["food_cpi"] = pd.to_numeric(food["food_cpi"], errors="coerce")
-    else:
-        col_map = {}
-        for c in food.columns:
-            cl = c.lower().strip()
-            if cl in ("country_code", "iso3", "iso", "area_code"):
-                col_map[c] = "iso3"
-            elif cl == "year": col_map[c] = "year"
-            elif cl == "month": col_map[c] = "month"
-            elif cl in ("food_cpi", "value", "cpi_food", "food_price_index"):
-                col_map[c] = "food_cpi"
-        food = food.rename(columns=col_map)
+        if "Value" in food.columns:
+            food = food.rename(columns={"Value": "food_cpi"})
+        food["food_cpi"] = pd.to_numeric(food.get("food_cpi", pd.Series(dtype=float)), errors="coerce")
 
     valid_iso3 = set(ISO3_TO_GW.keys())
     food["country_iso3"] = food["iso3"].where(food["iso3"].isin(valid_iso3))

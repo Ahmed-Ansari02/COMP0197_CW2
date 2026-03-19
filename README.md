@@ -39,7 +39,10 @@ Predicting fatality counts as a probability distribution over a monthly rolling 
 | GDELT | A, C | Global event database — event counts, tone, Goldstein scores |
 | V-Dem | B | Democracy indices, press freedom, corruption |
 | REIGN | B | Regime characteristics, leader tenure, elections |
-| Economic | B | Exchange rate volatility, GDP growth |
+| IMF IFS | B | Exchange rate volatility (monthly, 1985–2025) |
+| World Bank WDI | B | GDP growth (annual, expanded to monthly) |
+| FAO CPI | B | Food consumer price index (monthly, 2000–2025 only) |
+| Powell & Thyne | B | Coup d'état events (patches REIGN gap post-2021) |
 | GPR | C | Geopolitical risk index (global + 44 countries) |
 | Macro | C | VIX, WTI oil, gold, DXY, US 10Y yield, wheat, copper, US 13W T-bill |
 
@@ -116,7 +119,7 @@ Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `gdelt_protest_event_count` — overlap with member C's GDELT tone features
 
 ### Member B outputs
-- `data/processed/member_b/member_b_final.csv` — 34,020 rows x 74 columns (combined & cleaned dataset)
+- `data/processed/member_b/member_b_final.csv` — 92,988 rows x 76 columns (combined & cleaned dataset)
 - `data/processed/member_b/vdem_governance.csv` — V-Dem governance indices (171 countries)
 - `data/processed/member_b/reign_leader.csv` — REIGN leader/regime data (187 countries)
 - `data/processed/member_b/fx_exchange_rates.csv` — IMF exchange rate features (166 countries)
@@ -127,9 +130,20 @@ Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `data/processed/member_b/quality_report.json` — coverage & range statistics
 - `analysis/member_b/` — missingness heatmaps, distribution plots
 
+Download datasets:
+https://www.fao.org/faostat/en/#data/CP -> bulk download
+https://data.imf.org/en/Data%20Explorer?datasetUrn=IMF.STA%3AER%284.0.1%29&timeseriesName=ABW.XDC_USD.PA_RT.M
+https://v-dem.net/data/the-v-dem-dataset/ -> Country-Year: V-Dem Full+Others
+
+
+To generate the model-ready file after running the main pipeline:
+```bash
+  python pipelines/member_b/generate_structural_dataset.py --download        
+```
+
 #### Member B features
 
-All features are lagged by t-1. Panel covers 2010-01 to 2024-12 (189 countries x 180 months).
+All features are lagged by t-1. Panel covers 1985-01 to 2025-12.
 
 **V-Dem governance indices (annual, expanded to monthly)**
 
@@ -174,7 +188,7 @@ All features are lagged by t-1. Panel covers 2010-01 to 2024-12 (189 countries x
 | `reign_regime_*` | REIGN | One-hot encoded regime type (14 categories) |
 | `vdem_stale_flag` | REIGN | V-Dem annual data may be stale due to mid-year structural break |
 
-**Economic indicators**
+**Economic indicators (FAO food CPI available from 2000 only — NaN for 1985–1999)**
 
 | Feature | Source | Description |
 |---------|--------|-------------|
