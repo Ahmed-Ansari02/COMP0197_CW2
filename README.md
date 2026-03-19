@@ -42,7 +42,7 @@ Predicting fatality counts as a probability distribution over a monthly rolling 
 | IMF IFS | B | Exchange rate volatility (monthly, 1985–2025) |
 | World Bank WDI | B | GDP growth (annual, expanded to monthly) |
 | FAO CPI | B | Food consumer price index (monthly, 2000–2025 only) |
-| Powell & Thyne | B | Coup d'état events (patches REIGN gap post-2021) |
+| Powell & Thyne | B | Coup d'état events (independent source, 1985–2025) |
 | GPR | C | Geopolitical risk index (global + 44 countries) |
 | Macro | C | VIX, WTI oil, gold, DXY, US 10Y yield, wheat, copper, US 13W T-bill |
 
@@ -206,7 +206,7 @@ All features are lagged by t-1. Panel covers 1985-01 to 2025-12.
 | `food_cpi_acceleration` | FAO | Month-on-month change in year-on-year food CPI growth |
 | `food_price_spike` | FAO | Food price anomaly > 1.15 (binary) |
 
-**Powell & Thyne coup events (independent source, 1950–present)**
+**Powell & Thyne coup events (independent source, 1985–2025)**
 
 | Feature | Source | Description |
 |---------|--------|-------------|
