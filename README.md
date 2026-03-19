@@ -67,6 +67,9 @@ Each member's pipeline generates their processed dataset and analysis outputs.
 # Member A — UCDP, ACLED, GDELT conflict events
 python pipelines/member_a/generate_conflict_dataset.py
 
+# Member B — V-Dem, REIGN, economic, coup indicators
+python pipelines/member_b/generate_structural_dataset.py
+
 # Member C — GPR, GDELT tone, macro/volatility indicators
 python pipelines/member_c/generate_volatility_dataset.py
 ```
@@ -111,6 +114,103 @@ Added log-difference change features — computed as `log1p(x at t-1) - log1p(x 
 
 Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `gdelt_protest_event_count` — overlap with member C's GDELT tone features
+
+### Member B outputs
+- `data/processed/member_b/member_b_final.csv` — 34,020 rows x 74 columns (combined & cleaned dataset)
+- `data/processed/member_b/vdem_governance.csv` — V-Dem governance indices (171 countries)
+- `data/processed/member_b/reign_leader.csv` — REIGN leader/regime data (187 countries)
+- `data/processed/member_b/fx_exchange_rates.csv` — IMF exchange rate features (166 countries)
+- `data/processed/member_b/gdp_growth.csv` — World Bank GDP growth (185 countries)
+- `data/processed/member_b/food_prices.csv` — FAO food CPI features (176 countries)
+- `data/processed/member_b/powell_thyne_coups.csv` — Powell & Thyne coup events
+- `data/processed/member_b/feature_registry.csv` — metadata for all features
+- `data/processed/member_b/quality_report.json` — coverage & range statistics
+- `analysis/member_b/` — missingness heatmaps, distribution plots
+
+#### Member B features
+
+All features are lagged by t-1. Panel covers 2010-01 to 2024-12 (189 countries x 180 months).
+
+**V-Dem governance indices (annual, expanded to monthly)**
+
+| Feature | Source | Description |
+|---------|--------|-------------|
+| `v2x_libdem` | V-Dem | Liberal democracy index |
+| `v2x_polyarchy` | V-Dem | Electoral democracy index |
+| `v2x_partipdem` | V-Dem | Participatory democracy index |
+| `v2x_civlib` | V-Dem | Civil liberties index |
+| `v2x_rule` | V-Dem | Rule of law index |
+| `v2x_corr` | V-Dem | Political corruption index |
+| `v2x_execorr` | V-Dem | Executive corruption index |
+| `v2x_clphy` | V-Dem | Physical violence index |
+| `v2x_clpol` | V-Dem | Political civil liberties index |
+| `v2x_freexp_altinf` | V-Dem | Freedom of expression & alt info index |
+| `v2x_frassoc_thick` | V-Dem | Freedom of association (thick) index |
+| `v2xcs_ccsi` | V-Dem | Core civil society index |
+| `v2xnp_regcorr` | V-Dem | Regime corruption index |
+| `v2x_regime` | V-Dem | Regime type (0=closed autoc, 1=electoral autoc, 2=electoral dem, 3=liberal dem) |
+| `regime_type_0..3` | V-Dem | One-hot encoded regime type |
+| `governance_deficit` | V-Dem | Derived: 1 − mean(libdem, polyarchy, rule) |
+| `repression_index` | V-Dem | Derived: mean(corr, execorr) + (1 − clphy) / 2 |
+| `libdem_yoy_change` | V-Dem | Year-on-year change in liberal democracy index |
+
+**REIGN leader/regime data (monthly, forward-filled post-Aug 2021)**
+
+| Feature | Source | Description |
+|---------|--------|-------------|
+| `tenure_months` | REIGN | Leader's tenure in months |
+| `age` | REIGN | Leader's age (extrapolated post-cutoff) |
+| `male` | REIGN | Leader gender (binary) |
+| `militarycareer` | REIGN | Military career background (binary) |
+| `elected` | REIGN | Leader was elected (binary) |
+| `leader_age_risk` | REIGN | Derived: age < 40 or > 75 (binary) |
+| `months_since_election` | REIGN | Months since last election |
+| `regime_change` | REIGN | Government type changed this month (binary) |
+| `coup_event` | REIGN | Irregular transfer of power (binary, patched by Powell & Thyne post-2021) |
+| `prev_conflict` | REIGN | Previous conflict indicator |
+| `precip` | REIGN | Precipitation anomaly |
+| `months_since_structural_break` | REIGN | Months since last regime change or coup |
+| `reign_ffill_reliable` | REIGN | Forward-fill reliability flag (0 if post-cutoff coup invalidated) |
+| `reign_regime_*` | REIGN | One-hot encoded regime type (14 categories) |
+| `vdem_stale_flag` | REIGN | V-Dem annual data may be stale due to mid-year structural break |
+
+**Economic indicators**
+
+| Feature | Source | Description |
+|---------|--------|-------------|
+| `fx_pct_change` | IMF IFS | Month-on-month exchange rate % change |
+| `fx_volatility` | IMF IFS | 3-month rolling std of fx_pct_change |
+| `fx_volatility_log` | IMF IFS | log1p of fx_volatility |
+| `fx_depreciation_flag` | IMF IFS | Depreciation > 2σ above country mean (binary) |
+| `fx_pct_change_zscore` | IMF IFS | Expanding z-score of fx_pct_change |
+| `gdp_growth` | World Bank | Annual GDP growth rate (expanded to monthly) |
+| `gdp_growth_deviation` | World Bank | Z-score of GDP growth vs 5-year rolling mean |
+| `gdp_negative_shock` | World Bank | GDP deviation < −1.0 (binary) |
+| `food_price_anomaly` | FAO | Food CPI / 12-month rolling mean |
+| `food_price_anomaly_log` | FAO | log of food_price_anomaly |
+| `food_cpi_acceleration` | FAO | Month-on-month change in year-on-year food CPI growth |
+| `food_price_spike` | FAO | Food price anomaly > 1.15 (binary) |
+
+**Powell & Thyne coup events (patches REIGN gap post-2021)**
+
+| Feature | Source | Description |
+|---------|--------|-------------|
+| `pt_coup_event` | Powell & Thyne | Any coup attempt this month (binary) |
+| `pt_coup_successful` | Powell & Thyne | Successful coup (binary) |
+| `pt_coup_failed` | Powell & Thyne | Failed coup attempt (binary) |
+| `pt_coup_count` | Powell & Thyne | Number of coup events in month |
+| `pt_cumulative_coups` | Powell & Thyne | Cumulative coup count for country |
+| `pt_months_since_coup` | Powell & Thyne | Months since last coup event |
+
+**Missingness indicators**
+
+| Feature | Source | Description |
+|---------|--------|-------------|
+| `vdem_available` | Derived | V-Dem data available for this country-month (binary) |
+| `reign_available` | Derived | REIGN data available (binary) |
+| `fx_available` | Derived | Exchange rate data available (binary) |
+| `gdp_available` | Derived | GDP data available (binary) |
+| `food_available` | Derived | Food price data available (binary) |
 
 ### Member C outputs
 - `data/processed/member_c/member_c_final.csv` — 21,604 rows x 40 columns (combined & cleaned dataset)
