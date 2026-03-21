@@ -48,7 +48,9 @@ class ConflictDataset(Dataset):
                 continue
 
             feature_data = country_df[features].values.astype(np.float32)
-            targets = country_df[target_col].values.astype(np.float32)
+            # Target is log1p'd from member A's pipeline — undo for ZILNM
+            # (ZILNM log_prob expects raw counts: does its own log(y) internally)
+            targets = np.expm1(country_df[target_col].values.astype(np.float32))
 
             for i in range(window_size, len(country_df)):
                 x = feature_data[i - window_size:i]
@@ -101,8 +103,8 @@ def create_dataloaders(
     target_col: str = "ucdp_fatalities_best",
     window_size: int = 24,
     batch_size: int = 64,
-    train_end: str = "2021-12",
-    val_end: str = "2023-10",
+    train_end: str = "2024-03",
+    val_end: str = "2024-06",
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """Create train/val/test dataloaders with stratified sampling."""
     train_df = df[df["year_month"] <= train_end]
@@ -146,8 +148,8 @@ def train_model(
     max_epochs: int = 100,
     window_size: int = 24,
     patience: int = 10,
-    train_end: str = "2021-12",
-    val_end: str = "2023-10",
+    train_end: str = "2024-03",
+    val_end: str = "2024-06",
     checkpoint_dir: str = "checkpoints",
 ) -> ConflictForecaster:
     """Full training pipeline."""
