@@ -1,8 +1,7 @@
 """
 Add autoregressive features to the merged panel.
 
-Motivation: the ViEWS competition rank 1 model is literally just the last
-12 months of actuals. CCEW_tft (rank 5, best deep learning entry) added
+CCEW_tft (rank 5, best deep learning entry) added
 3 rolling statistics of lagged fatalities as custom features. Autoregressive
 signal dominates all other features for conflict forecasting.
 
