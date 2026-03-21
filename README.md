@@ -10,21 +10,29 @@ Predicting fatality counts as a probability distribution over a monthly rolling 
 │   └── processed/
 │       ├── member_a/          # ACLED, UCDP, GDELT event data
 │       ├── member_b/          # V-Dem, REIGN, Powell & Thyne, Economic indicators
-│       └── member_c/          # GPR, GDELT tone, macro/volatility indicators
+│       ├── member_c/          # GPR, GDELT tone, macro/volatility indicators
+│       └── merge/             # Merged panel + preprocessed model-ready dataset
 │
 ├── pipelines/
 │   ├── member_a/              # Data acquisition & processing scripts
 │   ├── member_b/
-│   └── member_c/
+│   ├── member_c/
+│   └── merge/                 # merge_panel.py, preprocess.py, fetch_gdelt_tone.py
+│
+├── src/
+│   ├── models/
+│   │   ├── tft/               # Simplified TFT (model.py, train.py)
+│   │   └── common/            # Shared distribution heads (ZILNM) and loss
+│   └── evaluation/            # metrics.py, baselines.py, eval_runner.py
+│
+├── config/                    # config.yaml (paths, hyperparams, splits)
 │
 ├── analysis/
 │   ├── member_a/              # EDA outputs (missingness heatmaps, distribution plots)
 │   ├── member_b/
 │   └── member_c/
 │
-├── model/                     # Shared transformer model code
-│
-├── docs/                      # reports 
+├── docs/                      # reports
 │
 ├── requirements.txt
 └── README.md
