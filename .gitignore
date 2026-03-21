@@ -22,3 +22,6 @@ data/raw/
 data/processed/member_a/acled_panel.csv
 data/processed/member_a/acled_cache.csv
 analysis/member_a/profiles/acled_*.png
+
+# pdf
+*.pdf
