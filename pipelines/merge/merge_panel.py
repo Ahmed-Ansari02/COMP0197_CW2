@@ -380,6 +380,16 @@ def main():
     merged = merge_panels(a, b, c)
     merged = broadcast_global_columns(merged)
     merged = backfill_gdelt_tone(merged)
+
+    # Fix: pipeline A accidentally lagged the target along with its features.
+    # Undo by shifting ucdp_fatalities_best back by -1 per country, so the
+    # target at month M reflects actual month M fatalities (not M-1).
+    target = "ucdp_fatalities_best"
+    if target in merged.columns:
+        merged = merged.sort_values(["country_iso3", "year_month"])
+        merged[target] = merged.groupby("country_iso3")[target].shift(-1)
+        print(f"Unlagged target '{target}' (shifted back by 1 month)")
+
     merged = add_temporal_columns(merged)
 
     # Post-merge validation
