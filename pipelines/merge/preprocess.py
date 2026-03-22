@@ -33,6 +33,10 @@ ALREADY_LOG1P = {
     "ucdp_civilian_deaths", "ucdp_peak_event_fatalities",
     "ucdp_fatality_uncertainty", "gdelt_conflict_event_count",
     "gdelt_goldstein_mean",
+    "acled_fatalities", "acled_event_count", "acled_peak_fatalities", "acled_battle_count",
+    "acled_explosion_count", "acled_violence_count", "acled_protest_count",
+    "acled_riot_count", "acled_airstrike_count", "acled_armed_clash_count",
+    "acled_political_violence_count", "acled_demonstration_count",
 }
 
 # Features already log1p-transformed by member C's pipeline

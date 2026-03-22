@@ -28,6 +28,9 @@ CHANGE_COLS = [
     "ucdp_fatalities_best",
     "ucdp_event_count",
     "gdelt_conflict_event_count",
+    "acled_fatalities",
+    "acled_event_count",
+    "acled_political_violence_count",
 ]
 
 df = pd.read_csv(os.path.join(OUTPUT_DIR, "member_a_final.csv"))

@@ -59,12 +59,12 @@ os.makedirs(os.path.join(REPORT_DIR, "missingness"), exist_ok=True)
 os.makedirs(os.path.join(REPORT_DIR, "profiles"), exist_ok=True)
 
 PANEL_START = "1985-01"
-PANEL_END   = "2025-12"
+PANEL_END   = "2024-12"
 GCP_PROJECT = "gdelt-490620"
 
 UCDP_GED_PATH       = os.path.join(RAW_DIR, "GEDEvent_v25_1.csv")
 UCDP_CANDIDATE_PATH = os.path.join(RAW_DIR, "GEDEvent_v26_0_1.csv")
-ACLED_DIR           = os.path.join(RAW_DIR, "member_a", "acled")
+ACLED_DIR           = RAW_DIR  # ACLED CSVs downloaded directly to data/raw/
 
 # UCDP type_of_violence: 1=state-based, 2=non-state, 3=one-sided
 # GDELT CAMEO: 14=protest, 18=assault, 19=fight, 20=mass violence
@@ -72,7 +72,10 @@ ACLED_DIR           = os.path.join(RAW_DIR, "member_a", "acled")
 LOG1P_FEATURES = [
     "ucdp_fatalities_best", "ucdp_fatalities_high", "ucdp_event_count",
     "ucdp_peak_event_fatalities", "ucdp_civilian_deaths",
-    "acled_fatalities", "acled_event_count", "acled_battle_count",
+    "acled_fatalities", "acled_event_count", "acled_peak_fatalities",
+    "acled_battle_count", "acled_explosion_count", "acled_violence_count",
+    "acled_protest_count", "acled_riot_count", "acled_airstrike_count",
+    "acled_armed_clash_count", "acled_political_violence_count", "acled_demonstration_count",
     "gdelt_conflict_event_count",
 ]
 
@@ -180,13 +183,10 @@ def distribution_profile(df, feature_cols, name):
 
 def load_ucdp():
     print("\n[UCDP] loading...")
-    ged  = pd.read_csv(UCDP_GED_PATH, low_memory=False)
-    cand = pd.read_csv(UCDP_CANDIDATE_PATH, low_memory=False)
+    ged = pd.read_csv(UCDP_GED_PATH, low_memory=False)
     print(f"  GED: {len(ged):,} events ({ged['year'].min()}–{ged['year'].max()})")
-    print(f"  Candidate: {len(cand):,} events ({cand['year'].min()}–{cand['year'].max()})")
-    print(f"  Candidate code_status:\n{cand['code_status'].value_counts().to_string()}")
 
-    df = pd.concat([ged, cand], ignore_index=True)
+    df = ged.copy()
     df["date_start"] = pd.to_datetime(df["date_start"], errors="coerce")
     df["year_month"] = df["date_start"].dt.to_period("M").astype(str)
     df = df[(df["year_month"] >= PANEL_START) & (df["year_month"] <= PANEL_END)]
@@ -204,7 +204,7 @@ def load_ucdp():
 
 def aggregate_ucdp(df):
     print("\n[UCDP] aggregating to country-month...")
-    df["fatality_range"] = df["high"] - df["low"]
+    df["fatality_range"] = (df["high"] - df["low"]).clip(lower=0)
 
     agg = df.groupby(["country_iso3", "year_month"]).agg(
         ucdp_event_count          =("id",               "count"),
@@ -305,6 +305,29 @@ def download_acled_api():
     return df
 
 
+def load_acled_csv():
+    """
+    Load ACLED raw event CSVs from ACLED_DIR.
+    Reads all files matching 'ACLED*.csv' and concatenates them.
+    """
+    pattern = os.path.join(ACLED_DIR, "ACLED*.csv")
+    import glob
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"\n[ACLED] no CSV files found in {ACLED_DIR}")
+        return None
+    print(f"\n[ACLED] loading {len(files)} CSV file(s) from {ACLED_DIR}...")
+    dfs = []
+    for f in files:
+        df = pd.read_csv(f, low_memory=False)
+        print(f"  {os.path.basename(f)}: {len(df):,} events")
+        dfs.append(df)
+    combined = pd.concat(dfs, ignore_index=True)
+    combined = combined.drop_duplicates(subset=["event_id_cnty"])
+    print(f"  total: {len(combined):,} events after dedup")
+    return combined
+
+
 def aggregate_acled(df):
     print("\n[ACLED] aggregating to country-month...")
     df["event_date"] = pd.to_datetime(df["event_date"], errors="coerce")
@@ -320,22 +343,48 @@ def aggregate_acled(df):
     df = df[(df["year_month"] >= PANEL_START) & (df["year_month"] <= PANEL_END)]
     df["fatalities"] = pd.to_numeric(df["fatalities"], errors="coerce").fillna(0)
 
+    # sub_event_type and disorder_type are present when downloaded with the full fields list
+    has_sub  = "sub_event_type" in df.columns
+    has_dis  = "disorder_type"  in df.columns
+
     agg = df.groupby(["country_iso3", "year_month"]).agg(
-        acled_event_count    =("event_type",  "count"),
-        acled_fatalities     =("fatalities",  "sum"),
-        acled_peak_fatalities=("fatalities",  "max"),
-        acled_battle_count   =("event_type",  lambda x: (x == "Battles").sum()),
-        acled_explosion_count=("event_type",  lambda x: (x == "Explosions/Remote violence").sum()),
-        acled_violence_count =("event_type",  lambda x: (x == "Violence against civilians").sum()),
-        acled_protest_count  =("event_type",  lambda x: (x == "Protests").sum()),
-        acled_riot_count     =("event_type",  lambda x: (x == "Riots").sum()),
+        acled_event_count          =("event_type",  "count"),
+        acled_fatalities           =("fatalities",  "sum"),
+        acled_peak_fatalities      =("fatalities",  "max"),
+        acled_battle_count         =("event_type",  lambda x: (x == "Battles").sum()),
+        acled_explosion_count      =("event_type",  lambda x: (x == "Explosions/Remote violence").sum()),
+        acled_violence_count       =("event_type",  lambda x: (x == "Violence against civilians").sum()),
+        acled_protest_count        =("event_type",  lambda x: (x == "Protests").sum()),
+        acled_riot_count           =("event_type",  lambda x: (x == "Riots").sum()),
     ).reset_index()
+
+    # Sub-event features: air/drone strikes and ground armed clashes
+    if has_sub:
+        sub_agg = df.groupby(["country_iso3", "year_month"]).agg(
+            acled_airstrike_count  =("sub_event_type", lambda x: (x == "Air/drone strike").sum()),
+            acled_armed_clash_count=("sub_event_type", lambda x: (x == "Armed clash").sum()),
+        ).reset_index()
+        agg = agg.merge(sub_agg, on=["country_iso3", "year_month"], how="left")
+    else:
+        agg["acled_airstrike_count"]   = 0
+        agg["acled_armed_clash_count"] = 0
+
+    # Disorder-type features: political violence vs demonstrations
+    if has_dis:
+        dis_agg = df.groupby(["country_iso3", "year_month"]).agg(
+            acled_political_violence_count=("disorder_type", lambda x: x.str.lower().str.contains("political violence", na=False).sum()),
+            acled_demonstration_count     =("disorder_type", lambda x: x.str.lower().str.contains("demonstration", na=False).sum()),
+        ).reset_index()
+        agg = agg.merge(dis_agg, on=["country_iso3", "year_month"], how="left")
+    else:
+        agg["acled_political_violence_count"] = 0
+        agg["acled_demonstration_count"]      = 0
 
     panel = build_full_panel(sorted(agg["country_iso3"].unique()))
     panel = panel.merge(agg, on=["country_iso3", "year_month"], how="left")
     acled_cols = [c for c in panel.columns if c.startswith("acled_")]
     panel[acled_cols] = panel[acled_cols].fillna(0)
-    print(f"  {panel.shape[0]:,} rows")
+    print(f"  {panel.shape[0]:,} rows | {len(acled_cols)} ACLED features")
     return panel
 
 
@@ -462,7 +511,9 @@ def main():
     missingness_report(ucdp_panel, "ucdp")
     distribution_profile(ucdp_panel, [c for c in ucdp_panel.columns if c.startswith("ucdp_")], "ucdp")
 
-    acled_raw   = download_acled_api()
+    acled_raw   = load_acled_csv()
+    if acled_raw is None:
+        acled_raw = download_acled_api()
     acled_panel = None
     if acled_raw is not None:
         acled_panel = aggregate_acled(acled_raw)
