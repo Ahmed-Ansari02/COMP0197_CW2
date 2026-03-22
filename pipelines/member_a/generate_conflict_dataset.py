@@ -24,7 +24,7 @@ Output:
   - data/processed/member_a/ucdp_panel.csv      → monthly UCDP features per country
   - data/processed/member_a/acled_panel.csv      → monthly ACLED features per country
   - data/processed/member_a/gdelt_events.csv     → monthly GDELT conflict features per country
-  - data/processed/member_a/member_a_final.csv   → merged panel, log1p-transformed, t-1 lagged
+  - data/processed/member_a/member_a_final.csv   → merged panel, features log1p-transformed and t-1 lagged, target unlagged
   - data/processed/member_a/feature_registry.csv → feature metadata
   - analysis/member_a/                           → missingness heatmaps, distribution plots
 
@@ -495,7 +495,7 @@ def save_feature_registry(df):
             "min":           round(series.min(),  4) if len(series) > 0 else None,
             "max":           round(series.max(),  4) if len(series) > 0 else None,
             "log1p_applied": col in LOG1P_FEATURES,
-            "lag_months":    1,
+            "lag_months":    0 if col == "ucdp_fatalities_best" else 1,
         })
     path = os.path.join(OUTPUT_DIR, "feature_registry.csv")
     pd.DataFrame(records).to_csv(path, index=False)

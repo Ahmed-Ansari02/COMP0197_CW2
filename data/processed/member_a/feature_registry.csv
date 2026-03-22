@@ -1,6 +1,6 @@
 feature_name,source,dtype,missing_pct,mean,std,min,max,log1p_applied,lag_months
 ucdp_event_count,UCDP,float64,46.17,0.532,1.1236,0.0,7.6339,True,1
-ucdp_fatalities_best,UCDP,float64,46.05,0.8266,1.734,0.0,13.5159,True,1
+ucdp_fatalities_best,UCDP,float64,46.05,0.8266,1.734,0.0,13.5159,True,0
 ucdp_fatalities_high,UCDP,float64,46.17,0.8961,1.8347,0.0,14.2657,True,1
 ucdp_civilian_deaths,UCDP,float64,46.17,0.4433,1.1746,0.0,13.5145,True,1
 ucdp_peak_event_fatalities,UCDP,float64,46.17,0.6199,1.3273,0.0,11.7105,True,1

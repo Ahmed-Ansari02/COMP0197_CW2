@@ -84,6 +84,10 @@ groups = {
     "event_counts": ["ucdp_event_count", "ucdp_state_based_events", "ucdp_non_state_events", "ucdp_one_sided_events"],
     "conflict_signal": ["gdelt_conflict_event_count", "gdelt_goldstein_mean"],
     "escalation": ["ucdp_fatalities_best_ld", "ucdp_event_count_ld", "gdelt_conflict_event_count_ld"],
+    "acled_overview": ["acled_event_count", "acled_fatalities", "acled_peak_fatalities"],
+    "acled_event_types": ["acled_battle_count", "acled_explosion_count", "acled_violence_count", "acled_protest_count", "acled_riot_count"],
+    "acled_subtype": ["acled_airstrike_count", "acled_armed_clash_count", "acled_political_violence_count", "acled_demonstration_count"],
+    "acled_escalation": ["acled_fatalities_ld", "acled_event_count_ld", "acled_political_violence_count_ld"],
 }
 
 for group_name, cols in groups.items():
@@ -127,5 +131,70 @@ plt.tight_layout()
 fig.savefig(os.path.join(REPORT_DIR, "temporal", "conflict_prevalence.png"), dpi=100)
 plt.close(fig)
 print("  saved temporal/conflict_prevalence.png")
+
+# ── 5. Target distribution ────────────────────────────────────────────────
+
+print("Plotting target distribution...")
+target = df["ucdp_fatalities_best"].dropna()
+pct_zero = (target == 0).mean() * 100
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+axes[0].hist(target[target > 0], bins=60, color="steelblue", alpha=0.85, edgecolor="none")
+axes[0].set_title(f"ucdp_fatalities_best (non-zero only)\n{pct_zero:.1f}% of rows are zero")
+axes[0].set_xlabel("log1p(fatalities)")
+axes[1].hist(target, bins=60, color="crimson", alpha=0.85, edgecolor="none")
+axes[1].set_title("ucdp_fatalities_best (all rows incl. zeros)")
+axes[1].set_xlabel("log1p(fatalities)")
+plt.suptitle("Target variable distribution — heavy zero-inflation motivates ZILNM", fontsize=10)
+plt.tight_layout()
+fig.savefig(os.path.join(REPORT_DIR, "profiles", "target_distribution.png"), dpi=120)
+plt.close(fig)
+print("  saved profiles/target_distribution.png")
+
+
+# ── 6. Zero-inflation rates across member A features ─────────────────────
+
+print("Plotting zero-inflation rates...")
+zero_rates = {col: (df[col].fillna(0) == 0).mean() * 100 for col in feature_cols}
+zero_df = pd.Series(zero_rates).sort_values(ascending=True)
+
+fig, ax = plt.subplots(figsize=(10, 10))
+colors = ["crimson" if v > 80 else "steelblue" for v in zero_df.values]
+ax.barh(zero_df.index, zero_df.values, color=colors, alpha=0.8)
+ax.axvline(80, color="crimson", linestyle="--", linewidth=0.8, label="80% threshold")
+ax.set_xlabel("% rows = 0")
+ax.set_title("Zero-inflation rates — member A features")
+ax.legend()
+plt.tight_layout()
+fig.savefig(os.path.join(REPORT_DIR, "profiles", "zero_inflation.png"), dpi=120)
+plt.close(fig)
+print("  saved profiles/zero_inflation.png")
+
+
+# ── 7. Key feature overview grid ──────────────────────────────────────────
+
+print("Plotting key feature overview...")
+key_features = [
+    "ucdp_fatalities_best", "ucdp_event_count",
+    "acled_fatalities", "acled_event_count",
+    "acled_political_violence_count", "acled_demonstration_count",
+    "gdelt_conflict_event_count", "gdelt_goldstein_mean",
+]
+key_features = [c for c in key_features if c in df.columns]
+
+fig, axes = plt.subplots(2, 4, figsize=(16, 7))
+axes = axes.flatten()
+for ax, col in zip(axes, key_features):
+    s = df[col].dropna()
+    ax.hist(s[s > 0] if (s > 0).any() else s, bins=40, color="steelblue", alpha=0.8, edgecolor="none")
+    pct_z = (s == 0).mean() * 100
+    ax.set_title(f"{col}\n{pct_z:.0f}% zero", fontsize=8)
+    ax.tick_params(labelsize=7)
+plt.suptitle("Key feature distributions (non-zero values, log1p-transformed)", fontsize=10)
+plt.tight_layout()
+fig.savefig(os.path.join(REPORT_DIR, "profiles", "key_features_overview.png"), dpi=120)
+plt.close(fig)
+print("  saved profiles/key_features_overview.png")
+
 
 print("\nDone.")
