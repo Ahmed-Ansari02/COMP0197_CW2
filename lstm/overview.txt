@@ -1,0 +1,10 @@
+It looks at the last 24 months of data for a country and feeds that sequence through an LSTM which learns temporal patterns like escalation trends and seasonal cycles.
+Separately it reads slow-moving country characteristics like democracy score and military regime type, and combines those with the sequence output.
+From that combined representation it produces three numbers that together define a full probability distribution:
+
+μ — the expected fatality count
+α — how spread out / uncertain the distribution is
+π — the probability that this month is genuine peace with zero fatalities
+
+Instead of running the model once, it runs 50 times with dropout randomly switching off different neurons each time. The variation across those 50 runs tells you epistemic uncertainty — how confident the model is based on what it has seen in training. The spread of the ZINB distribution itself tells you aleatoric uncertainty
+ — how inherently unpredictable conflict is in that country-month regardless of the model.
