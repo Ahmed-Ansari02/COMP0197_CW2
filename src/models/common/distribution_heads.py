@@ -5,6 +5,11 @@ Zero-Inflated Log-Normal Mixture (ZILNM) handles:
 - 92% zeros (most country-months are peaceful)
 - Extreme right skew (skewness=17, kurtosis=7810)
 - Heavy tails (mass atrocity events with 10K+ fatalities)
+
+HurdleStudentT:
+- Used by the Conv-Transformer model (Person B)
+- Explicit hurdle (binary conflict classifier) + Student-t in log1p space
+- Student-t polynomial tails better capture extreme spikes
 """
 
 import math
@@ -126,3 +131,118 @@ class ZeroInflatedLogNormalMixture(nn.Module):
         mixture_cdf = (mix_weights * component_cdf).sum(dim=-1)
 
         return (pi_zero + (1 - pi_zero) * mixture_cdf).clamp(0, 1)
+
+
+class HurdleStudentT(nn.Module):
+    """
+    Two-part hurdle distribution over fatality counts.
+
+    Part 1 — conflict gate:  P(y > 0) via sigmoid
+    Part 2 — severity:       Student-t over log1p(y) for positive counts
+                             (heavier tails than log-normal for extreme spikes)
+
+    The Student-t df parameter nu is floored at 2 to guarantee finite variance.
+    """
+
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(0.2),
+        )
+        self.conflict_head = nn.Linear(hidden_dim, 1)
+        self.severity_head = nn.Linear(hidden_dim, 3)
+
+        with torch.no_grad():
+            self.conflict_head.bias.fill_(-1.5)
+            self.severity_head.bias.copy_(torch.tensor([3.0, 0.0, 0.0]))
+
+    def forward(self, h: torch.Tensor) -> dict[str, torch.Tensor]:
+        h = self.shared(h)
+        conflict_logit = self.conflict_head(h).squeeze(-1)
+        sev = self.severity_head(h)
+        mu = sev[:, 0]
+        sigma = F.softplus(sev[:, 1]) + 1e-4
+        nu = F.softplus(sev[:, 2]) + 2.0
+        return {
+            "conflict_logit": conflict_logit,
+            "mu": mu,
+            "sigma": sigma,
+            "nu": nu,
+        }
+
+    def log_prob(self, params: dict[str, torch.Tensor], y: torch.Tensor) -> torch.Tensor:
+        """Full log-probability of the hurdle distribution."""
+        logit = params["conflict_logit"]
+        mu = params["mu"]
+        sigma = params["sigma"]
+        nu = params["nu"]
+
+        is_zero = (y == 0).float()
+
+        log_p_zero = F.logsigmoid(-logit)
+
+        log_p_pos_gate = F.logsigmoid(logit)
+
+        log_y = torch.log1p(y.clamp(min=0))
+        z = (log_y - mu) / sigma
+        log_p_student = (
+            torch.lgamma((nu + 1) / 2)
+            - torch.lgamma(nu / 2)
+            - 0.5 * torch.log(nu * math.pi)
+            - torch.log(sigma)
+            - ((nu + 1) / 2) * torch.log1p(z * z / nu)
+        )
+        log_p_positive = log_p_pos_gate + log_p_student
+
+        return is_zero * log_p_zero + (1 - is_zero) * log_p_positive
+
+    def sample(self, params: dict[str, torch.Tensor], n_samples: int = 1000) -> torch.Tensor:
+        """Draw (batch, n_samples) fatality count samples."""
+        logit = params["conflict_logit"]
+        mu = params["mu"]
+        sigma = params["sigma"]
+        nu = params["nu"]
+        B = logit.shape[0]
+
+        p_conflict = torch.sigmoid(logit)
+        is_nonzero = torch.bernoulli(
+            p_conflict.unsqueeze(-1).expand(B, n_samples)
+        )
+
+        chi2 = torch.distributions.Chi2(nu.unsqueeze(-1).expand(B, n_samples))
+        chi2_samples = chi2.sample()
+        z = torch.randn(B, n_samples, device=mu.device)
+        t_samples = z / torch.sqrt(chi2_samples / nu.unsqueeze(-1))
+
+        log_y = mu.unsqueeze(-1) + sigma.unsqueeze(-1) * t_samples
+        raw_samples = torch.expm1(log_y.clamp(max=15))  # cap to avoid overflow
+        raw_samples = raw_samples.clamp(min=0)
+
+        samples = is_nonzero * raw_samples
+        return torch.round(samples)
+
+    def cdf(self, params: dict[str, torch.Tensor], y: torch.Tensor) -> torch.Tensor:
+        """CDF at y for CRPS computation."""
+        logit = params["conflict_logit"]
+        mu = params["mu"]
+        sigma = params["sigma"]
+        nu = params["nu"]
+
+        p_zero = torch.sigmoid(-logit)
+        p_conflict = 1 - p_zero
+
+        log_y = torch.log1p(y.clamp(min=0))
+        z = (log_y - mu) / sigma
+
+        t_sq_over_nu = z * z / nu
+        x = nu / (nu + z * z)
+        beta_reg = torch.special.betainc(nu / 2, torch.tensor(0.5, device=nu.device), x)
+        student_cdf = torch.where(
+            z >= 0,
+            1 - 0.5 * beta_reg,
+            0.5 * beta_reg,
+        )
+
+        return (p_zero + p_conflict * student_cdf).clamp(0, 1)
