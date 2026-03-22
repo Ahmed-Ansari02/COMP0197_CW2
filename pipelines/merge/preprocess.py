@@ -254,8 +254,15 @@ def main():
     config = load_config()
     train_end = config["splits"]["train_end"]
 
-    # Load merged panel
-    input_path = MERGE_DIR / "merged_panel.csv"
+    # Load merged panel (prefer AR version if available)
+    ar_path = MERGE_DIR / "merged_panel_ar.csv"
+    plain_path = MERGE_DIR / "merged_panel.csv"
+    if ar_path.exists():
+        input_path = ar_path
+        print(f"Using autoregressive version: {ar_path.name}")
+    else:
+        input_path = plain_path
+        print(f"No AR features found — using {plain_path.name}")
     df = pd.read_csv(input_path)
     print(f"Loaded {input_path}: {df.shape}")
 

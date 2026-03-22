@@ -1,78 +1,97 @@
 """
 ViEWS Prediction Competition benchmark scores.
 
-Source: country_level.html and grid_level.html from
-  https://viewsforecasting.org/research/prediction-challenge-2023/
-Evaluation window: true future, July 2024 – June 2025
-Paper: https://arxiv.org/abs/2407.11045
+Loads per-month scores from cm_monthly_scores_full_Jul-Jun.csv and filters
+to the months where we have UCDP ground truth (currently Jul 2024 – Jan 2025).
 
-All scores: lower = better.
-CRPS = Continuous Ranked Probability Score (primary metric)
-ab-Log = ab-Log Score (log-likelihood based)
-MIS = Mean Interval Score
+Source: https://viewsforecasting.org/research/prediction-challenge-2023/
+Paper: https://arxiv.org/abs/2407.11045
 """
 
-# Country-level results (cm), July 2024 – June 2025, ranked by CRPS
-VIEWS_COUNTRY_LEVEL = {
-    # rank: (model, crps, ab_log, mis)
-    1:  ("VIEWS_bm_ph_conflictology_country12", 24.92, 0.76, 376.30),
-    2:  ("Brandt_NB_GLMM", 25.17, 1.17, 390.80),
-    3:  ("Randahl_Vegelius_markov_omm", 25.27, 0.68, 386.80),
-    4:  ("ConflictForecast", 25.96, 0.69, 329.70),
-    5:  ("CCEW_tft", 26.23, 1.13, 386.60),
-    6:  ("VIEWS_bm_last_historical", 26.32, 1.15, 500.80),
-    7:  ("Brandt_TW_GLMM", 26.69, 0.93, 466.70),
-    8:  ("Bodentien_Rueter_NB", 27.22, 0.73, 468.80),
-    9:  ("Drauz_Becker_quantile_forecast", 27.35, 0.78, 469.80),
-    10: ("PaCE_ShapeFinder", 32.74, 0.83, 380.20),
-    11: ("Brandt_P_GLMM", 33.38, 1.17, 645.10),
-    12: ("Randahl_Vegelius_markov_hpmm", 41.40, 0.83, 351.60),
-    13: ("Randahl_Vegelius_markov_gpcmm", 47.91, 8.75, 799.00),
-    14: ("VIEWS_bm_conflictology_bootstrap240", 54.54, 1.30, 1061.40),
-    15: ("VIEWS_bm_exactly_zero", 55.80, 1.83, 1116.00),
-    16: ("Muchlinski_Thornhill_zeroinf_GAM", 61.16, 2.43, 1183.50),
-    17: ("UNITO_transformer", 64.10, 1.12, 1020.10),
+import pandas as pd
+import numpy as np
+
+VIEWS_WINDOW_START = "2024-07"
+VIEWS_WINDOW_END = "2025-06"
+
+# Month ID → year_month mapping for the competition window
+MONTH_ID_MAP = {
+    535: "2024-07", 536: "2024-08", 537: "2024-09", 538: "2024-10",
+    539: "2024-11", 540: "2024-12", 541: "2025-01", 542: "2025-02",
+    543: "2025-03", 544: "2025-04", 545: "2025-05", 546: "2025-06",
 }
 
-# Grid-level results (pgm), July 2024 – June 2025, ranked by CRPS
-# just grabbed this but tbh , we only ahve data for countires anyways.
-VIEWS_GRID_LEVEL = {
-    1:  ("VIEWS_bm_ph_conflictology_country12", 0.27, 0.11, 4.58),
-    2:  ("CCEW_trees_local", 0.29, 0.10, 4.61),
-    3:  ("CCEW_trees_global_local", 0.29, 0.09, 4.43),
-    4:  ("CCEW_trees_global", 0.29, 0.09, 4.57),
-    5:  ("VIEWS_bm_ph_conflictology_neighbors12", 0.30, 0.11, 4.96),
-    6:  ("VIEWS_bm_conflictology_bootstrap240", 0.32, 0.12, 6.31),
-    7:  ("VIEWS_bm_exactly_zero", 0.32, 0.12, 6.31),
-    8:  ("VIEWS_bm_last_historical", 0.32, 0.15, 5.96),
-    9:  ("CCEW_tft", 0.33, 0.12, 6.02),
-    10: ("ConflictForecast", 0.33, 0.09, 7.91),
-}
-
-# Convenience dicts for eval_runner comparison tables
-VIEWS_BENCHMARKS = {
-    name: {"crps": crps, "ab_log": ab_log, "mis": mis}
-    for _, (name, crps, ab_log, mis) in VIEWS_COUNTRY_LEVEL.items()
-    if name.startswith("VIEWS_bm")
-}
-
-VIEWS_COMPETITION_ENTRIES = {
-    name: {"crps": crps, "ab_log": ab_log, "mis": mis}
-    for _, (name, crps, ab_log, mis) in VIEWS_COUNTRY_LEVEL.items()
-    if not name.startswith("VIEWS_bm")
-}
+# Reference models to highlight in comparisons
+TOP_REFS = [
+    "VIEWS_bm_ph_conflictology_country12",
+    "ConflictForecast",
+    "Randahl_Vegelius_markov_omm",
+    "CCEW_tft",
+]
 
 
-def print_views_benchmarks():
-    """Print ViEWS leaderboard (country-level, July 2024 – June 2025)."""
-    print("\nViEWS Live Leaderboard — Country-level, July 2024 – June 2025")
-    print("Source: country_level.html from viewsforecasting.org")
+def load_views_monthly_scores(csv_path: str = "cm_monthly_scores_full_Jul-Jun.csv") -> pd.DataFrame:
+    """Load raw per-month ViEWS competition scores."""
+    df = pd.read_csv(csv_path)
+    df["year_month"] = df["Month ID"].map(MONTH_ID_MAP)
+    return df
+
+
+def get_views_benchmarks(
+    csv_path: str = "cm_monthly_scores_full_Jul-Jun.csv",
+    usable_months: list[str] | None = None,
+) -> dict[str, dict]:
+    """
+    Load ViEWS scores and average over usable months only.
+
+    Returns:
+        {model_name: {"crps": float, "ign": float, "mis": float}, ...}
+    """
+    df = load_views_monthly_scores(csv_path)
+
+    if usable_months is not None:
+        df = df[df["year_month"].isin(usable_months)]
+
+    benchmarks = {}
+    for model_name in df["Model"].unique():
+        model_df = df[df["Model"] == model_name]
+        if len(model_df) > 0:
+            benchmarks[model_name] = {
+                "crps": float(model_df["CRPS"].mean()),
+                "ign": float(model_df["ab-Log Score"].mean()),
+                "mis": float(model_df["MIS"].mean()),
+            }
+
+    return benchmarks
+
+
+def get_views_monthly(
+    csv_path: str = "cm_monthly_scores_full_Jul-Jun.csv",
+    usable_months: list[str] | None = None,
+) -> pd.DataFrame:
+    """Load per-month scores filtered to usable months."""
+    df = load_views_monthly_scores(csv_path)
+    if usable_months is not None:
+        df = df[df["year_month"].isin(usable_months)]
+    return df
+
+
+def print_views_benchmarks(
+    csv_path: str = "cm_monthly_scores_full_Jul-Jun.csv",
+    usable_months: list[str] | None = None,
+):
+    """Print ViEWS leaderboard filtered to usable months."""
+    benchmarks = get_views_benchmarks(csv_path, usable_months)
+    n_months = len(usable_months) if usable_months else 12
+
+    print(f"\nViEWS Leaderboard — Country-level, {n_months} usable months")
     print(f"{'Rank':>4s}  {'Model':42s} {'CRPS':>7s} {'ab-Log':>7s} {'MIS':>9s}")
     print("-" * 73)
-    for rank, (name, crps, ab_log, mis) in sorted(VIEWS_COUNTRY_LEVEL.items()):
+
+    sorted_models = sorted(benchmarks.items(), key=lambda x: x[1]["crps"])
+    for rank, (name, scores) in enumerate(sorted_models, 1):
         marker = " *" if name.startswith("VIEWS_bm") else ""
-        print(f"  {rank:2d}  {name:42s} {crps:7.2f} {ab_log:7.2f} {mis:9.1f}{marker}")
+        print(f"  {rank:2d}  {name:42s} {scores['crps']:7.2f} {scores['ign']:7.2f} {scores['mis']:9.1f}{marker}")
+
     print("-" * 73)
     print("* = benchmark model")
-    print("#1 to beat: CRPS < 24.92 (VIEWS_bm_ph_conflictology_country12)")
-    print()

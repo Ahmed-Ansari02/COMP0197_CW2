@@ -482,7 +482,7 @@ def main():
         if col in final.columns:
             final[col] = np.log1p(final[col].clip(lower=0))
 
-    feature_cols = [c for c in final.columns if c not in ["country_iso3", "year_month"]]
+    feature_cols = [c for c in final.columns if c not in ["country_iso3", "year_month", "ucdp_fatalities_best"]]
     final = apply_lag(final, feature_cols, lag=1)
 
     final.to_csv(os.path.join(OUTPUT_DIR, "member_a_final.csv"), index=False)
