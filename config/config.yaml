@@ -1,0 +1,11 @@
+gcp_project: null
+
+splits:
+  train_end: "2024-03"
+  val_end: "2024-06"
+
+paths:
+  data_dir: "data/processed"
+  merge_dir: "data/processed/merge"
+  checkpoint_dir: "checkpoints"
+  results_dir: "results"
