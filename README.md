@@ -57,10 +57,10 @@ Predicting fatality counts as a probability distribution over a monthly rolling 
 ## Panel Structure
 
 - **Unit of analysis:** (country, month)
-- **Temporal range:** 1985-01 to 2025-12
+- **Temporal range:** 1985-01 to 2024-12
 - **Country identifiers:** ISO 3166-1 alpha-3 codes
-- **Lag convention:** All features lagged by t-1 (April's row uses March's data)
-- **Target variable:** UCDP-based fatality counts from ViEWS
+- **Lag convention:** All input features lagged by t-1 (April's row uses March's data); target is not lagged
+- **Target variable:** `ucdp_fatalities_best` — current month verified fatality count (UCDP GED, log1p-transformed, unlagged)
 
 ## Setup
 
@@ -86,10 +86,15 @@ python pipelines/member_c/generate_volatility_dataset.py
 ```
 
 ### Member A outputs
-- `data/processed/member_a/member_a_final.csv` — 86,100 rows x 23 columns (full feature set)
-- `data/processed/member_a/member_a_model_features.csv` — 86,100 rows x 18 columns (model-ready, redundant features removed)
-- `data/processed/member_a/feature_registry.csv` — metadata for all features
-- `analysis/member_a/` — missingness heatmaps, distribution plots
+- `data/processed/member_a/member_a_final.csv` — 109,440 rows × 27 columns (full feature set)
+- `data/processed/member_a/member_a_model_features.csv` — 109,440 rows × 32 columns (model-ready, with log-diff change features)
+- `data/processed/member_a/acled_panel.csv` — ACLED country-month panel
+- `data/processed/member_a/ucdp_panel.csv` — UCDP country-month panel
+- `data/processed/member_a/gdelt_events.csv` — GDELT country-month panel
+- `data/processed/member_a/feature_registry.csv` — metadata for all 25 features
+- `analysis/member_a/` — correlation matrix, distribution profiles, temporal trend plots
+
+ACLED raw CSVs must be downloaded manually from acleddata.com/data-export-tool (one CSV per year batch, all event types) and placed in `data/raw/`. The pipeline loads all files matching `ACLED*.csv` automatically.
 
 To generate the model-ready file after running the main pipeline:
 ```bash
@@ -98,30 +103,62 @@ python pipelines/member_a/filter_features.py
 
 #### Member A features (model-ready set)
 
-All features are lagged by t-1. Features marked log1p are log1p-transformed to handle heavy-tailed distributions.
+All features are lagged by t-1 (April's row uses March's data). The target `ucdp_fatalities_best` is **not lagged** — it is the current month's verified fatality count. Panel covers 1985-01 to 2024-12 (UCDP GED v25.1 finalized data only — candidate events excluded). ACLED covers 1997 onwards; UCDP covers 1989 onwards; pre-coverage rows are zero-filled.
 
-| Feature | Source | Transform | Description |
-|---------|--------|-----------|-------------|
-| `ucdp_event_count` | UCDP | log1p | Total conflict events in month |
-| `ucdp_fatalities_best` | UCDP | log1p | Best-estimate fatality count |
-| `ucdp_fatalities_high` | UCDP | log1p | High-estimate fatality count |
-| `ucdp_civilian_deaths` | UCDP | log1p | Civilian fatalities |
-| `ucdp_peak_event_fatalities` | UCDP | log1p | Max fatalities in a single event |
-| `ucdp_fatality_uncertainty` | UCDP | raw | Mean(high - low) across events |
-| `ucdp_state_based_events` | UCDP | raw | Events involving a state actor (type=1) |
-| `ucdp_non_state_events` | UCDP | raw | Non-state conflict events (type=2) |
-| `ucdp_one_sided_events` | UCDP | raw | One-sided violence events (type=3) |
-| `ucdp_has_conflict` | UCDP | binary | Any events recorded this month |
-| `gdelt_conflict_event_count` | GDELT | log1p | CAMEO 18/19/20 events — assault, fight, mass violence |
-| `gdelt_goldstein_mean` | GDELT | raw | Mean Goldstein hostility score across conflict events |
+**Target variable**
 
-Added log-difference change features — computed as `log1p(x at t-1) - log1p(x at t-2)`, capturing month-on-month escalation without division-by-zero on sparse conflict data:
+| Feature | Transform | Description |
+|---------|-----------|-------------|
+| `ucdp_fatalities_best` | log1p | Current month best-estimate fatality count — prediction target, not lagged |
+
+**UCDP features (lagged t-1)**
+
+| Feature | Transform | Description |
+|---------|-----------|-------------|
+| `ucdp_event_count` | log1p | Total conflict events in month |
+| `ucdp_fatalities_high` | log1p | High-estimate fatality count |
+| `ucdp_civilian_deaths` | log1p | Civilian fatalities |
+| `ucdp_peak_event_fatalities` | log1p | Max fatalities in a single event |
+| `ucdp_fatality_uncertainty` | raw | Mean(high − low) across events, clipped to 0 |
+| `ucdp_state_based_events` | raw | Events involving a state actor (type=1) |
+| `ucdp_non_state_events` | raw | Non-state conflict events (type=2) |
+| `ucdp_one_sided_events` | raw | One-sided violence events (type=3) |
+| `ucdp_has_conflict` | binary | Any events recorded this month |
+
+**ACLED features**
+
+| Feature | Transform | Description |
+|---------|-----------|-------------|
+| `acled_event_count` | log1p | Total ACLED events in month |
+| `acled_fatalities` | log1p | Total fatalities reported by ACLED |
+| `acled_peak_fatalities` | log1p | Max fatalities in a single event |
+| `acled_battle_count` | log1p | Battles events |
+| `acled_explosion_count` | log1p | Explosions/remote violence events |
+| `acled_violence_count` | log1p | Violence against civilians events |
+| `acled_protest_count` | log1p | Protest events |
+| `acled_riot_count` | log1p | Riot events |
+| `acled_airstrike_count` | log1p | Air/drone strike events (sub-event type) |
+| `acled_armed_clash_count` | log1p | Armed clash events (sub-event type) |
+| `acled_political_violence_count` | log1p | Events classified as political violence (disorder type) |
+| `acled_demonstration_count` | log1p | Events classified as demonstrations (disorder type) |
+
+**GDELT features**
+
+| Feature | Transform | Description |
+|---------|-----------|-------------|
+| `gdelt_conflict_event_count` | log1p | CAMEO 18/19/20 events — assault, fight, mass violence |
+| `gdelt_goldstein_mean` | raw | Mean Goldstein hostility score (negative = hostile) |
+
+**Log-difference change features** — `log1p(x at t-1) − log1p(x at t-2)`, capturing month-on-month escalation:
 
 | Feature | Description |
 |---------|-------------|
-| `ucdp_fatalities_best_ld` | Log-difference of verified fatalities (t-1 vs t-2) |
-| `ucdp_event_count_ld` | Log-difference of conflict event count (t-1 vs t-2) |
-| `gdelt_conflict_event_count_ld` | Log-difference of media-reported conflict events (t-1 vs t-2) |
+| `ucdp_fatalities_best_ld` | Escalation in verified fatalities |
+| `ucdp_event_count_ld` | Escalation in UCDP conflict events |
+| `gdelt_conflict_event_count_ld` | Escalation in media-reported conflict |
+| `acled_fatalities_ld` | Escalation in ACLED fatalities |
+| `acled_event_count_ld` | Escalation in ACLED events |
+| `acled_political_violence_count_ld` | Escalation in political violence events |
 
 Dropped from full set (`member_a_final.csv`) as overlapping with member C:
 - `gdelt_protest_event_count` — overlap with member C's GDELT tone features
