@@ -486,11 +486,14 @@ class HurdleStudentT(nn.Module):
     def sample(self, params, n_samples=1000):
         logit, mu, sigma, nu = params["conflict_logit"], params["mu"], params["sigma"], params["nu"]
         B = logit.shape[0]
+        dev = mu.device
         is_nonzero = torch.bernoulli(
             torch.sigmoid(logit).unsqueeze(-1).expand(B, n_samples))
-        chi2 = torch.distributions.Chi2(nu.unsqueeze(-1).expand(B, n_samples))
-        chi2_samples = chi2.sample()
-        z = torch.randn(B, n_samples, device=mu.device)
+        # Chi2 sampling uses _standard_gamma which is not supported on MPS
+        nu_exp = nu.unsqueeze(-1).expand(B, n_samples)
+        chi2 = torch.distributions.Chi2(nu_exp.cpu())
+        chi2_samples = chi2.sample().to(dev)
+        z = torch.randn(B, n_samples, device=dev)
         t_samples = z / torch.sqrt(chi2_samples / nu.unsqueeze(-1))
         log_y = mu.unsqueeze(-1) + sigma.unsqueeze(-1) * t_samples
         raw = torch.expm1(log_y.clamp(max=15)).clamp(min=0)
@@ -622,25 +625,9 @@ class HurdleLoss(nn.Module):
         return {"loss": bce + nll, "bce": bce.detach(), "nll": nll.detach()}
 
 
-class WarmupCosineScheduler(torch.optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, warmup_steps, total_steps, last_epoch=-1):
-        self.warmup_steps = warmup_steps
-        self.total_steps = total_steps
-        super().__init__(optimizer, last_epoch)
-
-    def get_lr(self):
-        step = max(1, self.last_epoch)
-        if step < self.warmup_steps:
-            scale = step / self.warmup_steps
-        else:
-            progress = (step - self.warmup_steps) / max(1, self.total_steps - self.warmup_steps)
-            scale = 0.5 * (1 + np.cos(np.pi * progress))
-        return [base_lr * scale for base_lr in self.base_lrs]
-
-
 def train_model(df, features=None, window_size=24, patch_size=3, hidden_dim=128,
                 n_heads=4, n_layers=4, n_conv_layers=2, dropout=0.2,
-                lr=5e-4, weight_decay=1e-4, batch_size=256, max_epochs=100,
+                lr=5e-4, weight_decay=1e-4, batch_size=64, max_epochs=100,
                 patience=15, train_end="2024-03", val_end="2024-06",
                 checkpoint_path="best_model.pt"):
     """Train Conv-Transformer and save best checkpoint."""
@@ -677,8 +664,7 @@ def train_model(df, features=None, window_size=24, patch_size=3, hidden_dim=128,
 
     criterion = HurdleLoss(pos_weight=5.1)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    total_steps = max_epochs * len(train_loader)
-    scheduler = WarmupCosineScheduler(optimizer, warmup_steps=500, total_steps=total_steps)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_epochs)
 
     best_val_loss = float("inf")
     patience_counter = 0
@@ -695,9 +681,9 @@ def train_model(df, features=None, window_size=24, patch_size=3, hidden_dim=128,
             loss_dict["loss"].backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-            scheduler.step()
             train_losses.append(loss_dict["loss"].item())
 
+        scheduler.step()
         model.eval()
         val_losses = []
         with torch.no_grad():
@@ -739,7 +725,7 @@ def main():
     parser = argparse.ArgumentParser(description="Data pipeline + Conv-Transformer training")
     parser.add_argument("--checkpoint", default="best_model.pt")
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--window-size", type=int, default=24)
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--patience", type=int, default=15)

@@ -143,23 +143,35 @@ def get_views_benchmarks(csv_path, usable_months=None):
 
 def build_test_samples(df, features, window_size=24,
                        test_start=VIEWS_WINDOW_START, test_end=VIEWS_WINDOW_END):
-    """Build test windows where the TARGET month is in the ViEWS window."""
+    """Build test windows where the TARGET month is in the ViEWS window.
+
+    NaN targets treated as zero (UCDP absence = no conflict = 0 fatalities).
+    Short sequences zero-padded so all countries are included.
+    """
     x_all, y_all, dates, countries = [], [], [], []
     for iso3 in df["country_iso3"].unique():
         cdf = df[df["country_iso3"] == iso3].sort_values("year_month")
-        if len(cdf) <= window_size:
-            continue
+
         feat = cdf[features].values.astype(np.float32)
-        targets = np.expm1(cdf[TARGET].values.astype(np.float32))
+        raw_targets = cdf[TARGET].values.astype(np.float32)
+        raw_targets = np.nan_to_num(raw_targets, nan=0.0)
+        targets = np.expm1(raw_targets)
         yms = cdf["year_month"].values
-        for i in range(window_size, len(cdf)):
-            ym, y = yms[i], targets[i]
+
+        # Zero-pad short sequences
+        if len(feat) < window_size:
+            pad_len = window_size - len(feat)
+            feat = np.concatenate([
+                np.zeros((pad_len, feat.shape[1]), dtype=np.float32), feat])
+            targets = np.concatenate([np.zeros(pad_len, dtype=np.float32), targets])
+            yms = np.concatenate([np.full(pad_len, ""), yms])
+
+        for i in range(window_size, len(feat)):
+            ym = yms[i]
             if ym < test_start or (test_end and ym > test_end):
                 continue
-            if np.isnan(y):
-                continue
             x_all.append(feat[i - window_size:i])
-            y_all.append(y)
+            y_all.append(targets[i])
             dates.append(ym)
             countries.append(iso3)
     return x_all, np.array(y_all), np.array(dates), np.array(countries)
