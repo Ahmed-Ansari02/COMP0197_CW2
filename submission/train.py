@@ -167,53 +167,7 @@ def add_temporal_columns(df):
     return df
 
 
-# --- Stage 5: Autoregressive features ---
-
 TARGET = "ucdp_fatalities_best"
-AR_WINDOWS = [3, 6, 12]
-
-
-def add_lag_features(df):
-    """Add per-country lagged target statistics."""
-    df = df.sort_values(["country_iso3", "year_month"]).copy()
-    print(f"[AR] Adding autoregressive features")
-
-    for iso3, group in df.groupby("country_iso3"):
-        idx = group.index
-        y = group[TARGET].values
-        s = pd.Series(y, index=idx).shift(1)
-
-        df.loc[idx, "target_lag1"] = s.values
-        df.loc[idx, "target_lag2"] = pd.Series(y, index=idx).shift(2).values
-        df.loc[idx, "target_lag3"] = pd.Series(y, index=idx).shift(3).values
-        df.loc[idx, "target_diff1"] = (s - pd.Series(y, index=idx).shift(2)).values
-
-        for w in AR_WINDOWS:
-            roll = s.rolling(window=w, min_periods=1)
-            df.loc[idx, f"target_roll{w}_mean"] = roll.mean().values
-            df.loc[idx, f"target_roll{w}_median"] = roll.median().values
-            df.loc[idx, f"target_roll{w}_std"] = roll.std().values
-            df.loc[idx, f"target_roll{w}_max"] = roll.max().values
-            rmean, rstd = roll.mean(), roll.std()
-            df.loc[idx, f"target_roll{w}_zscore"] = (
-                (s - rmean) / rstd.replace(0, np.nan)
-            ).values
-
-        spike_thresh = np.log1p(500)
-        lagged = pd.Series(y, index=idx).shift(1)
-        months_since = pd.Series(np.nan, index=idx)
-        counter = np.nan
-        for i, (ix, spike) in enumerate((lagged > spike_thresh).items()):
-            if spike:
-                counter = 0
-            elif not np.isnan(counter):
-                counter += 1
-            months_since.iloc[i] = counter
-        df.loc[idx, "target_months_since_spike"] = months_since.values
-
-    ar_cols = [c for c in df.columns if c.startswith("target_")]
-    print(f"[AR] Added {len(ar_cols)} features")
-    return df
 
 
 # --- Stage 6: Preprocess ---
@@ -323,9 +277,6 @@ def run_pipeline():
     merged = broadcast_globals(merged)
     merged = backfill_gdelt_tone(merged)
     merged = add_temporal_columns(merged)
-
-    # Add autoregressive features
-    # merged = add_lag_features(merged)
 
     # Preprocess
     result = preprocess(merged)
