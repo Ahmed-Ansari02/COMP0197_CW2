@@ -73,6 +73,8 @@ def compare_models(
         result = evaluate_model(name, y_true, samples, spike_threshold)
         rows.append({
             "Model": name,
+            "MAE": result["mae"],
+            "RMSE": result["rmse"],
             "CRPS": result["crps"],
             "IGN": result["ign"],
             "MIS_90": result["mis_90"],
@@ -80,15 +82,19 @@ def compare_models(
             "Spike_Recall": result["spikes"]["recall"],
             "Spike_Precision": result["spikes"]["precision"],
             "Spike_F1": result["spikes"]["f1"],
+            "Spike_AUROC": result["spikes"]["auroc"],
             "Calib_chi2_p": result["calibration"]["chi2_pval"],
             "N": result["n_observations"],
         })
 
-    # Add ViEWS benchmark rows from CSV
-    benchmarks = get_views_benchmarks(views_csv_path, usable_months)
+    # Add ViEWS benchmark rows from CSV (only when path is valid)
+    import os
+    benchmarks = get_views_benchmarks(views_csv_path, usable_months) if os.path.exists(views_csv_path) else {}
     for bm_name, bm_scores in benchmarks.items():
         rows.append({
             "Model": f"[views] {bm_name}",
+            "MAE": np.nan,
+            "RMSE": np.nan,
             "CRPS": bm_scores["crps"],
             "IGN": bm_scores["ign"],
             "MIS_90": bm_scores["mis"],
@@ -96,6 +102,7 @@ def compare_models(
             "Spike_Recall": np.nan,
             "Spike_Precision": np.nan,
             "Spike_F1": np.nan,
+            "Spike_AUROC": np.nan,
             "Calib_chi2_p": np.nan,
             "N": np.nan,
         })
@@ -158,10 +165,10 @@ def print_comparison(comparison_df: pd.DataFrame) -> None:
     print("=" * 90)
 
     fmt_df = comparison_df.copy()
-    for col in ["CRPS", "IGN", "MIS_90", "MIS_50"]:
+    for col in ["MAE", "RMSE", "CRPS", "IGN", "MIS_90", "MIS_50"]:
         if col in fmt_df.columns:
             fmt_df[col] = fmt_df[col].apply(lambda x: f"{x:.2f}" if not np.isnan(x) else "--")
-    for col in ["Spike_Recall", "Spike_Precision", "Spike_F1", "Calib_chi2_p"]:
+    for col in ["Spike_Recall", "Spike_Precision", "Spike_F1", "Spike_AUROC", "Calib_chi2_p"]:
         if col in fmt_df.columns:
             fmt_df[col] = fmt_df[col].apply(lambda x: f"{x:.3f}" if not np.isnan(x) else "--")
 

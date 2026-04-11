@@ -177,8 +177,49 @@ def pit_reliability(y_true: np.ndarray, samples: np.ndarray, n_bins: int = 10) -
 
 
 # ──────────────────────────────────────────────────────────────
+# Point Prediction Accuracy
+# ──────────────────────────────────────────────────────────────
+
+def mae(y_true: np.ndarray, samples: np.ndarray) -> float:
+    """MAE using sample mean as point estimate."""
+    y_pred = samples.mean(axis=1)
+    return float(np.abs(y_true - y_pred).mean())
+
+
+def rmse(y_true: np.ndarray, samples: np.ndarray) -> float:
+    """RMSE using sample mean as point estimate."""
+    y_pred = samples.mean(axis=1)
+    return float(np.sqrt(((y_true - y_pred) ** 2).mean()))
+
+
+def mae_point(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """MAE for point-estimate baselines."""
+    return float(np.abs(y_true - y_pred).mean())
+
+
+def rmse_point(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """RMSE for point-estimate baselines."""
+    return float(np.sqrt(((y_true - y_pred) ** 2).mean()))
+
+
+# ──────────────────────────────────────────────────────────────
 # Spike Metrics — High-fatality event detection
 # ──────────────────────────────────────────────────────────────
+
+def _auroc(y_true_binary: np.ndarray, y_score: np.ndarray) -> float:
+    """AUROC computed via trapezoidal integration (no sklearn dependency)."""
+    n_pos = y_true_binary.sum()
+    n_neg = len(y_true_binary) - n_pos
+    if n_pos == 0 or n_neg == 0:
+        return float("nan")
+    desc = np.argsort(y_score)[::-1]
+    y_sorted = y_true_binary[desc]
+    tp = np.cumsum(y_sorted)
+    fp = np.cumsum(1 - y_sorted)
+    tpr = np.concatenate([[0.0], tp / n_pos])
+    fpr = np.concatenate([[0.0], fp / n_neg])
+    return float(np.trapezoid(tpr, fpr))
+
 
 def spike_metrics(
     y_true: np.ndarray,
@@ -191,9 +232,10 @@ def spike_metrics(
 
     A spike is y_true > threshold.
     An alert is raised when the model's alert_quantile exceeds threshold.
+    AUROC uses P(sample > threshold) as the continuous score.
 
     Returns:
-        dict with recall, precision, f1, n_spikes, n_alerts
+        dict with recall, precision, f1, auroc, n_spikes, n_alerts
     """
     is_spike = y_true > threshold
     predicted_upper = np.quantile(samples, alert_quantile, axis=1)
@@ -217,10 +259,15 @@ def spike_metrics(
     else:
         f1 = 2 * recall * precision / (recall + precision)
 
+    # AUROC: use fraction of samples exceeding threshold as continuous score
+    y_score = (samples > threshold).mean(axis=1)
+    auroc = _auroc(is_spike.astype(float), y_score)
+
     return {
         "recall": recall,
         "precision": precision,
         "f1": f1,
+        "auroc": auroc,
         "n_spikes": n_spikes,
         "n_alerts": n_alerts,
     }
@@ -246,6 +293,8 @@ def full_evaluation(
         dict with all metrics
     """
     return {
+        "mae": mae(y_true, samples),
+        "rmse": rmse(y_true, samples),
         "crps": crps_mean(y_true, samples),
         "ign": ign_mean(y_true, samples),
         "mis_90": mis_from_samples(y_true, samples, alpha=0.1),
