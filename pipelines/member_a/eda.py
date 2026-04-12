@@ -1,12 +1,5 @@
 """
 Member A — Exploratory Data Analysis
-Run after generate_conflict_dataset.py and filter_features.py.
-Produces:
-  - analysis/member_a/correlation_matrix.png
-  - analysis/member_a/temporal/   — global time series plots per feature group
-  - analysis/member_a/profiles/distribution_profiles.csv — summary stats
-
-GenAI usage: Claude assisted with plot structure and layout.
 """
 
 import os

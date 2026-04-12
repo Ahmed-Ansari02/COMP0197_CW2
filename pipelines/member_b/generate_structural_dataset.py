@@ -1,10 +1,7 @@
 """
 Member B — Structural/Contextual Features Pipeline
-=====================================================
-
 Loads, cleans, and assembles governance, leader, economic, and coup data
 into a single (country, month) panel covering 1985-01 to 2025-12.
-
 Sources:
   1. V-Dem v15/v16 (annual expert-coded governance indices, ~180 countries)
   2. REIGN (monthly leader/regime data, stops Aug 2021)
@@ -12,37 +9,6 @@ Sources:
   4. World Bank WDI GDP growth (annual, expanded to monthly)
   5. FAO FAOSTAT food CPI (monthly, ~126 countries)
   6. Powell & Thyne coup d'etat dataset (event-level, 1950–present)
-
-Requirements:
-  pip install pandas numpy pyarrow requests pyyaml matplotlib seaborn
-
-Setup:
-  - V-Dem CSV must be downloaded manually from https://v-dem.net (~300MB)
-  - REIGN, GDP, and Powell & Thyne can be auto-downloaded with --download
-  - IMF and FAO data require manual download (see notes in config section)
-
-Output:
-  - data/processed/member_b/vdem_governance.csv      -> V-Dem governance indices
-  - data/processed/member_b/reign_leader.csv         -> REIGN leader/regime data
-  - data/processed/member_b/fx_exchange_rates.csv    -> IMF exchange rate features
-  - data/processed/member_b/gdp_growth.csv           -> World Bank GDP growth
-  - data/processed/member_b/food_prices.csv          -> FAO food CPI features
-  - data/processed/member_b/powell_thyne_coups.csv   -> Powell & Thyne coup events
-  - data/processed/member_b/member_b_final.csv       -> assembled panel (merged)
-  - data/processed/member_b/feature_registry.csv     -> feature metadata
-  - data/processed/member_b/quality_report.json      -> coverage & range stats
-  - analysis/member_b/missingness/                    -> missingness heatmaps
-  - analysis/member_b/profiles/                       -> distribution plots
-
-Notes:
-  - Panel index: (country_iso3, year_month) — consistent with members A/C
-  - Annual data expanded to monthly via repetition (NOT interpolation)
-  - All features lagged by t-1 to prevent temporal leakage
-  - Missingness encoded as informative binary indicators
-  - No normalisation — Member C handles this after train/test split
-  - REIGN ends Aug 2021: no forward-fill, features are NaN post-cutoff
-  - reign_available missingness flag lets the model learn from the gap
-  - Powell & Thyne is an independent source covering 1985–present (not a REIGN patch)
 
 """
 

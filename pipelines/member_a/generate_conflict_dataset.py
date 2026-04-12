@@ -7,34 +7,6 @@ Sources:
   2. ACLED export CSVs (1997-present)
   3. GDELT 1.0 via BigQuery — conflict and protest events (1985-present)
 
-Requirements:
-  pip install pandas pycountry matplotlib seaborn google-cloud-bigquery db-dtypes
-
-Setup for BigQuery:
-  1. Create a Google Cloud project (free tier gives 1TB/month of queries)
-  2. Enable the BigQuery API
-  3. Authenticate: gcloud auth application-default login
-  4. Set your project ID in GCP_PROJECT below
-
-Setup for ACLED:
-  - Download a global CSV export from https://acleddata.com/data-export-tool/
-  - Place the file(s) in data/raw/member_a/acled/
-
-Output:
-  - data/processed/member_a/ucdp_panel.csv      → monthly UCDP features per country
-  - data/processed/member_a/acled_panel.csv      → monthly ACLED features per country
-  - data/processed/member_a/gdelt_events.csv     → monthly GDELT conflict features per country
-  - data/processed/member_a/member_a_final.csv   → merged panel, features log1p-transformed and t-1 lagged, target unlagged
-  - data/processed/member_a/feature_registry.csv → feature metadata
-  - analysis/member_a/                           → missingness heatmaps, distribution plots
-
-Notes:
-  - UCDP type_of_violence: 1=state-based, 2=non-state, 3=one-sided violence
-  - UCDP candidate events (2025+) contain unverified records — included for coverage
-  - GDELT CAMEO codes: 14=protest, 18=assault, 19=fight, 20=mass violence
-  - Country-months with no events are zero-filled (not dropped)
-  - All features lagged by t-1 relative to the target window
-
 """
 
 import os

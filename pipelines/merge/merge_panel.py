@@ -5,17 +5,6 @@ Join key: (country_iso3, year_month)
 Strategy: outer join to preserve all country-month observations.
 Output: data/processed/merge/merged_panel.csv
 
-**NOTE** u need to setup bigquery + run fetch_gdelt_tone for this to work!!!
-Setup (BigQuery — needed for GDELT tone backfill):
-  1. Go to https://console.cloud.google.com
-  2. Enable the BigQuery API (APIs & Services → search "BigQuery API" → Enable)
-  3. Run: gcloud auth application-default login
-  4. Set your project ID in config/config.yaml under gcp_project
-  5. Run: python pipelines/merge/fetch_gdelt_tone.py
-  This is free — BigQuery gives 1TB/month, this query uses ~3-5GB.
-  If you skip this step, the merge still works but GDELT tone columns
-  will only cover 44 countries instead of ~200.
-
 We decide to drop these columns:
 - gpr_country: GPR country-level index only exists for 44 countries
   (Caldara & Iacoviello only publish it for major economies). Including it

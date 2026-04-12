@@ -4,15 +4,6 @@ Fetch GDELT tone data for ALL countries via BigQuery.
 Member C's pipeline only stored tone for 44 GPR countries because it used
 gpr_country as the merge scaffold. This script fetches the same GDELT tone
 features for all ~200 countries directly.
-
-Requires:
-  pip install google-cloud-bigquery db-dtypes
-  gcloud auth application-default login
-
-Output: data/processed/merge/gdelt_tone_all.csv
-  Columns: country_iso3, year_month, tone_mean, tone_min, tone_max,
-           tone_std, event_count, goldstein_mean
-
 These are the same features member C produced, just for all countries.
 The merge pipeline reads this file and uses it to fill in the gaps.
 """
