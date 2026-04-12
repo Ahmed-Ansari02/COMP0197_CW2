@@ -218,7 +218,8 @@ def _auroc(y_true_binary: np.ndarray, y_score: np.ndarray) -> float:
     fp = np.cumsum(1 - y_sorted)
     tpr = np.concatenate([[0.0], tp / n_pos])
     fpr = np.concatenate([[0.0], fp / n_neg])
-    return float(np.trapezoid(tpr, fpr))
+    _trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    return float(_trapz(tpr, fpr))
 
 
 def spike_metrics(

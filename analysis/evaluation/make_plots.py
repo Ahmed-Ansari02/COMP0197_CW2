@@ -3,6 +3,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 import numpy as np
+_trapz = getattr(np, "trapezoid", getattr(np, "trapz", None))
 import pandas as pd
 import torch
 import matplotlib
@@ -11,27 +12,165 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from tqdm import tqdm
 
-from src.models.tft.model import ConflictForecaster
-from src.models.tft.train import get_feature_list
-from src.evaluation.evaluate_tft import build_test_samples, build_baselines, generate_predictions, build_xgboost_baseline
+from submission.train import ConvTransformer, get_feature_list
+from src.evaluation.evaluate_tft import generate_predictions
 from src.evaluation.metrics import (
     pit_values, crps_sample, spike_metrics, _auroc, mae, rmse,
     mae_point, rmse_point,
 )
 from src.evaluation.baselines import (
-    load_views_monthly_scores, VIEWS_WINDOW_START, VIEWS_WINDOW_END,
-    TOP_REFS,
+    load_views_monthly_scores, VIEWS_WINDOW_START, VIEWS_WINDOW_END, TOP_REFS,
 )
 
-CHECKPOINT   = "checkpoints/best_model.pt"
-DATA_PATH    = "data/processed/merge/model_ready.csv"
-VIEWS_CSV    = "cm_monthly_scores_full_Jul-Jun.csv"
+CHECKPOINT   = "submission/best_model.pt"
+DATA_PATH    = "submission/data/merge/model_ready.csv"
+VIEWS_CSV    = "submission/cm_monthly_scores_full_Jul-Jun.csv"
 OUT_DIR      = "analysis/evaluation"
 N_SAMPLES    = 1000
 BATCH_SIZE   = 128
 WINDOW_SIZE  = 24
 HORIZONS     = [1, 3, 6]
 SPIKE_THRESH = 500
+
+def build_test_samples(
+    df: pd.DataFrame,
+    features: list,
+    target_col: str = "ucdp_fatalities_best",
+    window_size: int = 24,
+    horizon: int = 1,
+    test_start: str = VIEWS_WINDOW_START,
+    test_end: str = VIEWS_WINDOW_END,
+):
+    """
+    Build sliding-window test samples matching submission/test.py exactly:
+    - NaN targets treated as 0 (UCDP absence = no conflict)
+    - Short sequences zero-padded so all countries are included
+    - horizon=h: features from [i-window_size-(h-1) : i-(h-1)], target at i
+    """
+    x_all, y_all, dates, countries = [], [], [], []
+    shift = horizon - 1
+
+    for iso3 in df["country_iso3"].unique():
+        cdf = df[df["country_iso3"] == iso3].sort_values("year_month")
+
+        feat_data = cdf[features].values.astype(np.float32)
+        raw_targets = cdf[target_col].values.astype(np.float32)
+        raw_targets = np.nan_to_num(raw_targets, nan=0.0)  # NaN → 0
+        targets = np.expm1(raw_targets)
+        yms = cdf["year_month"].values
+
+        # Zero-pad short sequences so every country is included
+        needed = window_size + shift
+        if len(feat_data) < needed:
+            pad = needed - len(feat_data)
+            feat_data = np.concatenate([np.zeros((pad, feat_data.shape[1]), dtype=np.float32), feat_data])
+            targets = np.concatenate([np.zeros(pad, dtype=np.float32), targets])
+            yms = np.concatenate([np.full(pad, ""), yms])
+
+        for i in range(needed, len(feat_data)):
+            ym = yms[i]
+            if ym < test_start:
+                continue
+            if test_end and ym > test_end:
+                continue
+            x_all.append(feat_data[i - window_size - shift: i - shift])
+            y_all.append(targets[i])
+            dates.append(ym)
+            countries.append(iso3)
+
+    return x_all, np.array(y_all), np.array(dates), np.array(countries)
+
+
+def build_baselines(
+    df: pd.DataFrame,
+    target_col: str,
+    countries: np.ndarray,
+    dates: np.ndarray,
+    horizon: int,
+) -> dict:
+    """Persistence and 6-month moving-average baselines."""
+    persistence = np.full(len(countries), np.nan)
+    movavg6m    = np.full(len(countries), np.nan)
+
+    for idx, (iso3, ym) in enumerate(zip(countries, dates)):
+        cdf = df[df["country_iso3"] == iso3].sort_values("year_month")
+        all_ym  = cdf["year_month"].values
+        targets = np.expm1(cdf[target_col].values.astype(np.float32))
+        pos = np.searchsorted(all_ym, ym)
+        lag_pos = pos - horizon
+        if lag_pos >= 0:
+            persistence[idx] = targets[lag_pos]
+        if lag_pos >= 6:
+            movavg6m[idx] = targets[lag_pos - 5: lag_pos + 1].mean()
+        elif lag_pos >= 0:
+            movavg6m[idx] = targets[: lag_pos + 1].mean()
+
+    return {"Persistence": persistence, "MovingAvg-6m": movavg6m}
+
+
+def build_xgboost_baseline(
+    df: pd.DataFrame,
+    features: list,
+    target_col: str,
+    countries: np.ndarray,
+    dates: np.ndarray,
+    horizon: int,
+) -> tuple:
+    """
+    Gradient-boosted tree baseline (sklearn HistGradientBoostingRegressor).
+    Uses single-timestep features — no temporal window — trained on pre-test data.
+    sklearn is used instead of XGBoost to avoid macOS OpenMP segfaults.
+    """
+    from sklearn.ensemble import HistGradientBoostingRegressor
+
+    test_key_to_idx = {(c, d): j for j, (c, d) in enumerate(zip(countries, dates))}
+
+    train_rows, train_targets = [], []
+    test_rows  = [None] * len(countries)
+    test_found = [False] * len(countries)
+
+    for iso3 in df["country_iso3"].unique():
+        cdf = df[df["country_iso3"] == iso3].sort_values("year_month")
+        all_ym = cdf["year_month"].values
+        feats  = cdf[features].values.astype(np.float32)
+        raw_t  = cdf[target_col].values.astype(np.float32)
+
+        for i in range(horizon, len(cdf)):
+            ym    = all_ym[i]
+            y_val = raw_t[i]
+            if np.isnan(y_val):
+                continue
+            x_row = feats[i - horizon]
+            key = (iso3, ym)
+            if key in test_key_to_idx:
+                j = test_key_to_idx[key]
+                test_rows[j]  = x_row
+                test_found[j] = True
+            elif ym < VIEWS_WINDOW_START:
+                train_rows.append(x_row)
+                train_targets.append(y_val)
+
+    found_idx = [j for j, ok in enumerate(test_found) if ok]
+    if len(train_rows) == 0 or len(found_idx) == 0:
+        return np.full(len(countries), np.nan), None
+
+    X_train = np.stack(train_rows).astype(np.float32)
+    y_train = np.array(train_targets, dtype=np.float32)
+    X_test  = np.stack([test_rows[j] for j in found_idx]).astype(np.float32)
+
+    model = HistGradientBoostingRegressor(
+        max_iter=400, max_depth=5, learning_rate=0.05,
+        random_state=42,
+    )
+    model.fit(X_train, y_train)
+
+    preds_raw = model.predict(X_test)
+    preds_out = np.full(len(countries), np.nan)
+    for j, pred in zip(found_idx, preds_raw):
+        preds_out[j] = float(max(pred, 0))
+
+    return preds_out, model
+
 
 colour_palette = {
     "ours":        "#2563EB",
@@ -41,6 +180,7 @@ colour_palette = {
     "neutral":     "#6B7280",
 }
 
+
 def load_model_and_data():
     device = torch.device(
         "mps"  if torch.backends.mps.is_available() else
@@ -48,19 +188,17 @@ def load_model_and_data():
     )
     df = pd.read_csv(DATA_PATH)
     features = get_feature_list(df)
-    model = ConflictForecaster(
-        n_features=len(features), hidden_dim=64,
-        n_lstm_layers=1, n_attention_heads=2, n_mixture_components=3,
-    ).to(device)
+    model = ConvTransformer(n_features=len(features)).to(device)
     model.load_state_dict(torch.load(CHECKPOINT, weights_only=True, map_location=device))
     model.eval()
     return model, df, features, device
+
 
 def collect_horizon_data(model, df, features, device, horizons):
     """For each horizon: (x_list, y, dates, countries, samples)."""
     data = {}
     for h in horizons:
-        print(f"  Generating predictions for h={h}…")
+        print(f"  Generating predictions for h={h}...")
         x_all, y_all, dates_all, countries_all = build_test_samples(
             df, features, window_size=WINDOW_SIZE, horizon=h,
         )
@@ -73,11 +211,12 @@ def collect_horizon_data(model, df, features, device, horizons):
         c_u = countries_all[mask]
         samples = generate_predictions(model, x_u, device, N_SAMPLES, BATCH_SIZE)
         baselines = build_baselines(df, "ucdp_fatalities_best", c_u, d_u, h)
-        print(f"  Training XGBoost baseline (h={h})…")
+        print(f"  Training XGBoost baseline (h={h})...")
         xgb_preds, _ = build_xgboost_baseline(df, features, "ucdp_fatalities_best", c_u, d_u, h)
         baselines["XGBoost"] = xgb_preds
         data[h] = dict(y=y_u, dates=d_u, countries=c_u, samples=samples, baselines=baselines)
     return data
+
 
 def savefig(name):
     path = os.path.join(OUT_DIR, name)
@@ -85,10 +224,11 @@ def savefig(name):
     plt.close()
     print(f"  Saved {path}")
 
+
 def plot_pit(data):
-    print("Plot 1: PIT histogram…")
+    print("Plot 1: PIT histogram...")
     fig, axes = plt.subplots(1, 3, figsize=(12, 4), sharey=True)
-    fig.suptitle("Calibration — PIT Histogram (uniform = perfectly calibrated)", fontsize=13)
+    fig.suptitle("Calibration -- PIT Histogram (uniform = perfectly calibrated)", fontsize=13)
 
     for ax, h in zip(axes, HORIZONS):
         pits = pit_values(data[h]["y"], data[h]["samples"])
@@ -98,7 +238,7 @@ def plot_pit(data):
         expected = 1 / n_bins
         centers = (edges[:-1] + edges[1:]) / 2
         colours = [colour_palette["ours"] if abs(f - expected) > 0.02 else colour_palette["neutral"]
-                  for f in freq]
+                   for f in freq]
         ax.bar(centers, freq, width=0.09, color=colours, edgecolor="white", linewidth=0.5)
         ax.axhline(expected, color="black", linestyle="--", linewidth=1, label="Ideal")
         ax.set_title(f"Horizon {h}m  (n={len(pits)})")
@@ -111,10 +251,11 @@ def plot_pit(data):
     plt.tight_layout()
     savefig("pit_histogram.png")
 
+
 def plot_crps_per_month(data):
-    print("Plot 2: Per-month CRPS…")
+    print("Plot 2: Per-month CRPS...")
     if not os.path.exists(VIEWS_CSV):
-        print("  (skipped — ViEWS CSV not found)")
+        print("  (skipped -- ViEWS CSV not found)")
         return
 
     views_df = load_views_monthly_scores(VIEWS_CSV)
@@ -148,14 +289,15 @@ def plot_crps_per_month(data):
     ax.set_xticks(x + width * (len(refs) / 2))
     ax.set_xticklabels(months, rotation=25, ha="right")
     ax.set_ylabel("CRPS (lower = better)")
-    ax.set_title("Per-month CRPS — TFT vs top ViEWS entries (h=1)")
+    ax.set_title("Per-month CRPS -- TFT vs top ViEWS entries (h=1)")
     ax.legend(fontsize=8)
     ax.grid(axis="y", alpha=0.3, zorder=0)
     plt.tight_layout()
     savefig("crps_per_month.png")
 
+
 def plot_horizon_comparison(data):
-    print("Plot 3: Horizon comparison…")
+    print("Plot 3: Horizon comparison...")
     fig, axes = plt.subplots(1, 3, figsize=(13, 5))
     fig.suptitle("Performance across forecast horizons", fontsize=13)
 
@@ -220,8 +362,9 @@ def plot_horizon_comparison(data):
     plt.tight_layout()
     savefig("horizon_comparison.png")
 
+
 def plot_roc(data):
-    print("Plot 4: ROC curves…")
+    print("Plot 4: ROC curves...")
     fig, ax = plt.subplots(figsize=(6, 6))
     colours = [colour_palette["ours"], "#7C3AED", "#D97706"]
 
@@ -241,7 +384,7 @@ def plot_roc(data):
         fp = np.cumsum(1 - y_sorted)
         tpr = np.concatenate([[0], tp / n_pos, [1]])
         fpr = np.concatenate([[0], fp / n_neg, [1]])
-        auc = float(np.trapezoid(tpr, fpr))
+        auc = float(_trapz(tpr, fpr))
         ax.plot(fpr, tpr, color=col, linewidth=2, label=f"h={h}m  (AUROC={auc:.3f})")
 
     ax.plot([0, 1], [0, 1], "k--", linewidth=1, alpha=0.5, label="Random")
@@ -253,8 +396,9 @@ def plot_roc(data):
     plt.tight_layout()
     savefig("roc_curve.png")
 
+
 def plot_pred_vs_actual(data):
-    print("Plot 5: Predicted vs actual…")
+    print("Plot 5: Predicted vs actual...")
     d = data[1]
     nonzero = d["y"] > 0
     y_true = d["y"][nonzero]
@@ -274,17 +418,17 @@ def plot_pred_vs_actual(data):
     ax.plot([0, lim], [0, lim], "k--", linewidth=1, alpha=0.6, label="Perfect")
     ax.set_xlabel("Actual fatalities")
     ax.set_ylabel("Predicted mean fatalities")
-    ax.set_title("Predicted vs Actual — non-zero months (h=1)\nerror bars = 90% prediction interval")
+    ax.set_title("Predicted vs Actual -- non-zero months (h=1)\nerror bars = 90% prediction interval")
     ax.legend(fontsize=9)
     ax.grid(alpha=0.2)
     plt.tight_layout()
     savefig("pred_vs_actual.png")
 
+
 def plot_country_timeseries(data, df):
-    print("Plot 6: Country time series…")
+    print("Plot 6: Country time series...")
     d = data[1]
 
-    # top-5 countries by total fatalities in test window
     test_totals = (
         pd.DataFrame({"iso3": d["countries"], "month": d["dates"], "y": d["y"]})
         .groupby("iso3")["y"].sum()
@@ -293,9 +437,7 @@ def plot_country_timeseries(data, df):
     top_countries = test_totals.index.tolist()
 
     fig, axes = plt.subplots(5, 1, figsize=(11, 14), sharex=False)
-    fig.suptitle("Top-5 conflict countries — predicted distribution vs actual (h=1)", fontsize=12)
-
-    months_all = sorted(set(d["dates"]))
+    fig.suptitle("Top-5 conflict countries -- predicted distribution vs actual (h=1)", fontsize=12)
 
     for ax, iso3 in zip(axes, top_countries):
         mask = d["countries"] == iso3
@@ -340,12 +482,12 @@ def plot_country_timeseries(data, df):
 
 
 def plot_crps_by_bucket(data):
-    print("Plot 7: CRPS by fatality bucket…")
+    print("Plot 7: CRPS by fatality bucket...")
     buckets = [
         ("y = 0",          lambda y: y == 0),
-        ("0 < y ≤ 25",     lambda y: (y > 0) & (y <= 25)),
-        ("25 < y ≤ 100",   lambda y: (y > 25) & (y <= 100)),
-        ("100 < y ≤ 500",  lambda y: (y > 100) & (y <= 500)),
+        ("0 < y <= 25",    lambda y: (y > 0) & (y <= 25)),
+        ("25 < y <= 100",  lambda y: (y > 25) & (y <= 100)),
+        ("100 < y <= 500", lambda y: (y > 100) & (y <= 500)),
         ("y > 500",        lambda y: y > 500),
     ]
 
@@ -368,14 +510,15 @@ def plot_crps_by_bucket(data):
     ax.set_xticks(x + width)
     ax.set_xticklabels([f"{label}\n(n={c})" for (label, _), c in zip(buckets, counts)])
     ax.set_ylabel("Mean CRPS (lower = better)")
-    ax.set_title("CRPS by fatality magnitude — where does the model struggle?")
+    ax.set_title("CRPS by fatality magnitude -- where does the model struggle?")
     ax.legend()
     ax.grid(axis="y", alpha=0.3, zorder=0)
     plt.tight_layout()
     savefig("crps_by_bucket.png")
 
+
 def plot_failure_analysis(data):
-    print("Plot 8: Failure analysis…")
+    print("Plot 8: Failure analysis...")
     d = data[1]
     crps_all = crps_sample(d["y"], d["samples"])
     top_k = 15
@@ -402,13 +545,14 @@ def plot_failure_analysis(data):
     plt.tight_layout()
     savefig("failure_analysis.png")
 
+
 if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
 
-    print("Loading model and data…")
+    print("Loading model and data...")
     model, df, features, device = load_model_and_data()
 
-    print("Collecting predictions across horizons…")
+    print("Collecting predictions across horizons...")
     data = collect_horizon_data(model, df, features, device, HORIZONS)
 
     plot_pit(data)

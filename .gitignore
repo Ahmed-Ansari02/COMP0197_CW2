@@ -43,3 +43,4 @@ data/processed/merge/feature_registry.csv
 # Matplotlib cache
 .mpl_cache/
 results/.mpl_cache/
+submission/data/merge/model_ready.csv
