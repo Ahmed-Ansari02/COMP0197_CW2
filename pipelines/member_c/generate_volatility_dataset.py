@@ -1,43 +1,8 @@
 """
 Member C Data Acquisition & Exploration Script
-================================================
 Downloads, explores, and profiles:
   1. GPR (Geopolitical Risk Index) — global + country-level monthly data
   2. GDELT tone/sentiment — via Google BigQuery (all countries in one query)
-
-Then runs:
-  Task 1: Missingness Audit
-  Task 2: Temporal Alignment (lag application, panel reshaping)
-  Task 3: Distribution Profiling (stats, transforms, correlations, autocorrelation)
-  + Feature Registry output
-
-Requirements:
-  pip install pandas openpyxl xlrd requests google-cloud-bigquery db-dtypes \
-              matplotlib seaborn scipy
-
-Setup for BigQuery:
-  1. Create a Google Cloud project (free tier gives 1TB/month of queries)
-  2. Enable the BigQuery API
-  3. Authenticate via one of:
-     a) Run: gcloud auth application-default login
-     b) Set env var: export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
-  4. Set your project ID in the GCP_PROJECT variable below
-
-Output:
-  - data/gpr_global.csv         → Monthly global GPR, GPRT (threats), GPRA (acts)
-  - data/gpr_country.csv        → Monthly country-level GPR for ~44 countries
-  - data/gdelt_tone.csv         → Monthly tone per country (from BigQuery)
-  - data/fips_to_iso_mapping.csv→ Mapping file for GDELT country codes
-  - output/missingness/         → Heatmaps and reports per source
-  - output/profiles/            → Distribution profiles per feature
-  - output/feature_registry.csv → Completed feature registry
-  - output/member_c_final.csv → Final (country, month) panel with t-1 lag
-
-Notes:
-  - GPR data is freely available from Caldara & Iacoviello (Fed Board of Governors)
-  - GDELT is free on BigQuery; Google free tier = 1TB queries/month (more than enough)
-  - BigQuery pulls ALL countries at once — no looping, no rate limits
-  - Set USE_DOC_API_FALLBACK = True if you can't set up GCP
 """
 
 import os

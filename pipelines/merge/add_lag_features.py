@@ -4,15 +4,6 @@ Add autoregressive features to the merged panel.
 CCEW_tft (rank 5, best deep learning entry) added
 3 rolling statistics of lagged fatalities as custom features. Autoregressive
 signal dominates all other features for conflict forecasting.
-
-Reads:  data/processed/merge/merged_panel.csv
-Writes: data/processed/merge/merged_panel_ar.csv
-
-Run this BEFORE preprocess.py. The preprocess pipeline will auto-detect
-these as numeric features and standardise them like everything else.
-
-If you skip this script, preprocess.py still works on merged_panel.csv —
-you just won't have the autoregressive features.
 """
 
 import pandas as pd

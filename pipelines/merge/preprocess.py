@@ -1,9 +1,6 @@
 """
 Preprocess the merged panel into model-ready features.
 
-Reads:  data/processed/merge/merged_panel.csv
-Writes: data/processed/merge/model_ready.csv
-
 Steps:
 1. Drop identifiers, availability flags, and known duplicate columns
 2. Log1p-transform heavy-tailed features (skew > 3, non-negative, max > 100)
@@ -15,7 +12,6 @@ Steps:
 6. Fill remaining NaN with 0 (post-standardisation, 0 = population mean), so this is like 'avg' value
 7. Save with a feature registry
 
-Does NOT touch: country_iso3, year_month, target column (kept as-is for splits)
 """
 
 import pandas as pd
